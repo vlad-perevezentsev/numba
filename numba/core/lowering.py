@@ -183,6 +183,12 @@ class BaseLower(object):
         """
         Lower non-generator *fndesc*.
         """
+        print('lower_normal_function',self.func_ir)
+        ctx = {}
+        ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
+        import mlir_compiler
+        mlir_compiler.lower_normal_function(ctx, self.func_ir)
+        # self.func_ir.dump()
         self.setup_function(fndesc)
 
         # Init argument values
@@ -278,7 +284,6 @@ class Lower(BaseLower):
         from numba.core.unsafe import eh
 
         super(Lower, self).pre_block(block)
-
         if block == self.firstblk:
             # create slots for all the vars, irrespective of whether they are
             # initialized, SSA will pick this up and warn users about using
