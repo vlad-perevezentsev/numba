@@ -20,6 +20,8 @@
 
 #include "type_parser.hpp"
 
+#include <llvm/Bitcode/BitcodeWriter.h>
+
 #include <iostream>
 
 namespace py = pybind11;
@@ -30,6 +32,16 @@ namespace
 {
     auto str = msg.str();
     throw std::exception(str.c_str());
+}
+
+std::string serialize_mod(const llvm::Module& mod)
+{
+    std::string ret;
+    llvm::raw_string_ostream stream(ret);
+//    mod.print(stream, nullptr);
+    llvm::WriteBitcodeToFile(mod, stream);
+    stream.flush();
+    return ret;
 }
 
 template<typename T>
@@ -148,16 +160,17 @@ struct lowerer
 
     }
 
-    void lower(const py::object& compilation_context, const py::object& func_ir)
+    py::bytes lower(const py::object& compilation_context, const py::object& func_ir)
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         auto typ = get_func_type(compilation_context["fntype"]);
         func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), "test", typ);
         lower_func_body(func_ir);
         mod.push_back(func);
-        mod.dump();
+//        mod.dump();
         auto llvmmod = mlir::translateModuleToLLVMIR(mod);
-        llvmmod->dump();
+//        llvmmod->dump();
+        return py::bytes(serialize_mod(*llvmmod));
     }
 private:
     mlir::MLIRContext ctx;
@@ -282,14 +295,25 @@ private:
     {
         std::cout << "asdasd " << py::str(val).cast<std::string>() << std::endl;
         std::cout << "asdasd " << py::str(val.get_type()).cast<std::string>() << std::endl;
-//        if (py::isinstance<bool>(val))
+        if (py::isinstance<py::int_>(val))
         {
-            auto b = val.cast<int>();
-            auto mlir_type = mllvm::LLVMType::getInt1Ty(&dialect);
-            auto value = builder.getBoolAttr(b);
+            auto mlir_type = mllvm::LLVMType::getIntNTy(&dialect, 64);
+            auto value = builder.getI64IntegerAttr(val.cast<int64_t>());
             return builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, value);
         }
-        report_error(llvm::Twine("get_const_val unhandled type") + py::str(val).cast<std::string>());
+//        if (py::isinstance<bool>(val))
+//        {
+//            auto b = val.cast<int>();
+//            auto mlir_type = mllvm::LLVMType::getInt1Ty(&dialect);
+//            auto value = builder.getBoolAttr(b);
+//            return builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, value);
+//        }
+
+        // assume it is a PyObject*
+        auto mlir_type = mllvm::LLVMType::getInt8Ty(&dialect).getPointerTo();
+        return builder.create<mllvm::NullOp>(builder.getUnknownLoc(), mlir_type);
+
+//        report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
     mlir::Value lower_assign(const py::handle& inst, const py::handle& name)
@@ -306,10 +330,10 @@ private:
         {
             // TODO unhardcode
             // TODO incref
-            auto mlir_type = mllvm::LLVMType::getIntNTy(&dialect, 64);
-            auto val = builder.getI64IntegerAttr(value.attr("value").cast<int64_t>());
-            return builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, val);
-//            return get_const_val(value.attr("value"));
+//            auto mlir_type = mllvm::LLVMType::getIntNTy(&dialect, 64);
+//            auto val = builder.getI64IntegerAttr(value.attr("value").cast<int64_t>());
+//            return builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, val);
+            return get_const_val(value.attr("value"));
         }
         if(py::isinstance(value, insts.Expr))
         {
@@ -423,8 +447,8 @@ private:
 };
 }
 
-void lower_function(const py::object& compilation_context, const py::object& func_ir)
+py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
 {
     mlir::registerDialect<mllvm::LLVMDialect>();
-    lowerer().lower(compilation_context, func_ir);
+    return lowerer().lower(compilation_context, func_ir);
 }
