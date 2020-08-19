@@ -650,26 +650,31 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                     not isinstance(output_type, types.Array)):
                 continue
 
-            cr = self.cache.compile(pyfunc,
-                                    (input1_type, input2_type, output_type),
-                                    flags=flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc,
+            #                         (input1_type, input2_type, output_type),
+            #                         flags=flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
 
             if isinstance(input1_operand, np.ndarray):
                 result = np.zeros(input1_operand.size,
                                   dtype=output_type.dtype.name)
                 expected = np.zeros(input1_operand.size,
                                     dtype=output_type.dtype.name)
+                global_size = input1_operand.size
             elif isinstance(input2_operand, np.ndarray):
                 result = np.zeros(input2_operand.size,
                                   dtype=output_type.dtype.name)
                 expected = np.zeros(input2_operand.size,
                                     dtype=output_type.dtype.name)
+                global_size = input2_operand.size
             else:
                 result = np.zeros(1, dtype=output_type.dtype.name)
                 expected = np.zeros(1, dtype=output_type.dtype.name)
+                global_size = 1
 
-            cfunc(input1_operand, input2_operand, result)
+            # cfunc(input1_operand, input2_operand, result)
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input1_operand, input2_operand, result)
             pyfunc(input1_operand, input2_operand, expected)
 
             scalar_type = getattr(output_type, 'dtype', output_type)
@@ -704,14 +709,17 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input_type = types.Array(types.uint64, x.ndim, 'C')
             output_type = types.Array(types.int64, result.ndim, 'C')
 
-            cr = self.cache.compile(pyfunc, (input_type, output_type),
-                                    flags=no_pyobj_flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc, (input_type, output_type),
+            #                         flags=no_pyobj_flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
 
             expected = np.zeros(result.shape, dtype=result.dtype)
             np.negative(x, expected)
 
-            cfunc(x, result)
+            # cfunc(x, result)
+            global_size = expected.size
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, result)
             self.assertPreciseEqual(result, expected)
 
         # Test binary ufunc
@@ -736,23 +744,27 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input2_type = types.Array(types.uint64, y.ndim, 'C')
             output_type = types.Array(types.uint64, max(x.ndim, y.ndim), 'C')
 
-            cr = self.cache.compile(pyfunc, (input1_type, input2_type, output_type),
-                                    flags=no_pyobj_flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc, (input1_type, input2_type, output_type),
+            #                         flags=no_pyobj_flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
 
             expected = np.add(x, y)
             result = np.zeros(expected.shape, dtype='u8')
 
-            cfunc(x, y, result)
+            # cfunc(x, y, result)
+            global_size = result.size
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y, result)
             self.assertPreciseEqual(result, expected)
 
-    def test_implicit_output_npm(self):
-        with self.assertRaises(TypeError):
-            def myadd(a0, a1):
-                return np.add(a0, a1)
-            arr_ty = types.Array(types.uint64, 1, 'C')
-            cr = compile_isolated(myadd, (arr_ty, arr_ty),
-                                  flags=no_pyobj_flags)
+    # def test_implicit_output_npm(self):
+    #     with self.assertRaises(TypeError):
+    #         def myadd(a0, a1):
+    #             return np.add(a0, a1)
+    #         arr_ty = types.Array(types.uint64, 1, 'C')
+    #         # cr = compile_isolated(myadd, (arr_ty, arr_ty),
+    #         #                       flags=no_pyobj_flags)
+    #         cfunc = dppl.kernel(myadd)
 
     def test_broadcast_implicit_output_npm_nrt(self):
         def pyfunc(a0, a1):
@@ -776,12 +788,15 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input1_type = types.Array(types.uint64, x.ndim, 'C')
             input2_type = types.Array(types.uint64, y.ndim, 'C')
 
-            cr = self.cache.compile(pyfunc, (input1_type, input2_type),
-                                    flags=enable_nrt_flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc, (input1_type, input2_type),
+            #                         flags=enable_nrt_flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
 
             expected = np.add(x, y)
-            result = cfunc(x, y)
+            global_size = max(x.size, y.size)
+            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y)
+            # result = cfunc(x, y)
             np.testing.assert_array_equal(expected, result)
 
     def test_implicit_output_layout_binary(self):
@@ -810,10 +825,13 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         testcases += [(Z, Z)]
 
         for arg0, arg1 in testcases:
-            cr = self.cache.compile(pyfunc, (typeof(arg0), typeof(arg1)),
-                                    flags=enable_nrt_flags)
+            # cr = self.cache.compile(pyfunc, (typeof(arg0), typeof(arg1)),
+            #                         flags=enable_nrt_flags)
+            cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(arg0, arg1)
-            result = cr.entry_point(arg0, arg1)
+            # result = cr.entry_point(arg0, arg1)
+            global_size = max(arg0.size, arg1.size)
+            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0, arg1)
 
             self.assertEqual(expected.flags.c_contiguous,
                              result.flags.c_contiguous)
@@ -842,10 +860,13 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         assert not Z.flags.f_contiguous
 
         for arg0 in [X, Y, Z]:
-            cr = self.cache.compile(pyfunc, (typeof(arg0),),
-                                    flags=enable_nrt_flags)
+            # cr = self.cache.compile(pyfunc, (typeof(arg0),),
+            #                         flags=enable_nrt_flags)
+            cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(arg0)
-            result = cr.entry_point(arg0)
+            # result = cr.entry_point(arg0)
+            global_size = arg0.size
+            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0)
 
             self.assertEqual(expected.flags.c_contiguous,
                              result.flags.c_contiguous)
@@ -875,11 +896,14 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                 (not isinstance(input_type, types.Array))):
                 continue
 
-            cr = self.cache.compile(pyfunc, (input_type,),
-                                    flags=flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc, (input_type,),
+            #                         flags=flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(input_operand)
-            got = cfunc(input_operand)
+            # got = cfunc(input_operand)
+            global_size = input_operand.size
+            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand)
             self._check_results(expected, got)
 
     def binary_op_test(self, operator, flags=enable_nrt_flags,
@@ -918,11 +942,14 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                 if positive_rhs and input_operand1 < zero:
                     continue
 
-            cr = self.cache.compile(pyfunc, (input_type0, input_type1),
-                                    flags=flags)
-            cfunc = cr.entry_point
+            # cr = self.cache.compile(pyfunc, (input_type0, input_type1),
+            #                         flags=flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(input_operand0, input_operand1)
-            got = cfunc(input_operand0, input_operand1)
+            # got = cfunc(input_operand0, input_operand1)
+            global_size = input_operand0.size
+            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand0, input_operand1)
             self._check_results(expected, got)
 
     def bitwise_additional_inputs(self):
@@ -966,13 +993,21 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
         for lhs, rhs in itertools.product(lhs_inputs, rhs_inputs):
             lhs_type = typeof(lhs)
             rhs_type = typeof(rhs)
-            cr = self.cache.compile(pyfunc, (lhs_type, rhs_type),
-                                    flags=no_pyobj_flags)
-            cfunc = cr.entry_point
+            if isinstance(lhs, types.Array):
+            	global_size = lhs.size
+            elif isinstance(rhs, types.Array):
+            	global_size = rhs.size
+            else:
+            	global_size = 1
+            # cr = self.cache.compile(pyfunc, (lhs_type, rhs_type),
+            #                         flags=no_pyobj_flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
             expected = lhs.copy()
             pyfunc(expected, rhs)
             got = lhs.copy()
-            cfunc(got, rhs)
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](got, rhs)
+            # cfunc(got, rhs)
             self.assertPreciseEqual(got, expected)
 
     def inplace_float_op_test(self, operator, lhs_values, rhs_values):
@@ -1178,9 +1213,12 @@ class TestScalarUFuncs(TestCase):
 
     def run_ufunc(self, pyfunc, arg_types, arg_values):
         for tyargs, args in zip(arg_types, arg_values):
-            cr = compile_isolated(pyfunc, tyargs, flags=self._compile_flags)
-            cfunc = cr.entry_point
-            got = cfunc(*args)
+            # cr = compile_isolated(pyfunc, tyargs, flags=self._compile_flags)
+            # cfunc = cr.entry_point
+            cfunc = dppl.kernel(pyfunc)
+            # got = cfunc(*args)
+            global_size = len(args)
+            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](*args)
             expected = pyfunc(*_as_dtype_value(tyargs, args))
 
             msg = 'for args {0} typed {1}'.format(args, tyargs)
@@ -1208,7 +1246,9 @@ class TestScalarUFuncs(TestCase):
                 elif np.issubdtype(expected.dtype, np.bool):
                     expected = bool(expected)
 
-            alltypes = cr.signature.args + (cr.signature.return_type,)
+            # alltypes = cr.signature.args + (cr.signature.return_type,)
+            alltypes = tuple([cfunc.typingctx.resolve_argument_type(a)
+                              for a in args])
 
             # select the appropriate precision for comparison: note that an argument
             # typed at a lower precision can introduce precision problems. For this
@@ -1402,7 +1442,8 @@ class _LoopTypesTester(TestCase):
     def _check_ufunc_with_dtypes(self, fn, ufunc, dtypes):
         arg_dty = [np.dtype(t) for t in dtypes]
         arg_nbty = [types.Array(from_dtype(t), 1, 'C') for t in arg_dty]
-        cr = compile_isolated(fn, arg_nbty, flags=self._compile_flags)
+        # cr = compile_isolated(fn, arg_nbty, flags=self._compile_flags)
+        cfunc = dppl.kernel(fn)
 
         # Ensure a good mix of input values
         c_args = [self._arg_for_type(t, index=index).repeat(2)
@@ -1411,7 +1452,9 @@ class _LoopTypesTester(TestCase):
             self.random.shuffle(arr)
         py_args = [a.copy() for a in c_args]
 
-        cr.entry_point(*c_args)
+        # cr.entry_point(*c_args)
+        global_size = len(py_args)
+        cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](*c_args)
         fn(*py_args)
 
         # Check each array (including inputs, to ensure they weren't
