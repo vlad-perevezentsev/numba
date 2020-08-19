@@ -186,13 +186,14 @@ class BaseLower(object):
         print('lower_normal_function',self.func_ir)
         ctx = {}
         ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
+        ctx['fnname'] = lambda: fndesc.mangled_name
         import mlir_compiler
         mod_ir = mlir_compiler.lower_normal_function(ctx, self.func_ir)
         import llvmlite.binding as llvm
         mod = llvm.parse_bitcode(mod_ir)
-        # print(mod)
-        func = mod.get_function('test');
-        print(func);
+        print(mod)
+        # func = mod.get_function('test');
+        # print(func);
 
         # self.func_ir.dump()
         self.setup_function(fndesc)

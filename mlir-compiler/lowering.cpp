@@ -164,7 +164,8 @@ struct lowerer
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         auto typ = get_func_type(compilation_context["fntype"]);
-        func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), "test", typ);
+        auto name = compilation_context["fnname"]().cast<std::string>();
+        func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
         mod.push_back(func);
 //        mod.dump();
