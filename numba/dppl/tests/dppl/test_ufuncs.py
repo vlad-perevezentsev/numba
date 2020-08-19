@@ -783,7 +783,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
     #         #                       flags=no_pyobj_flags)
     #         cfunc = dppl.kernel(myadd)
 
-	@unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_broadcast_implicit_output_npm_nrt(self):
         def pyfunc(a0, a1):
             return np.add(a0, a1)
@@ -817,7 +817,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             # result = cfunc(x, y)
             np.testing.assert_array_equal(expected, result)
 
- 	@unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_implicit_output_layout_binary(self):
         def pyfunc(a0, a1):
             return np.add(a0, a1)
@@ -858,7 +858,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                              result.flags.f_contiguous)
             np.testing.assert_array_equal(expected, result)
 
-  	@unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_implicit_output_layout_unary(self):
         def pyfunc(a0):
             return np.sqrt(a0)
@@ -1143,7 +1143,7 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
     # ____________________________________________________________
     # Binary operators
 
-	@unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_add_array_op(self):
         self.binary_op_test('+')
 
