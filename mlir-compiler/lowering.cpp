@@ -294,8 +294,6 @@ private:
 
     mlir::Value get_const_val(const py::handle& val)
     {
-        std::cout << "asdasd " << py::str(val).cast<std::string>() << std::endl;
-        std::cout << "asdasd " << py::str(val.get_type()).cast<std::string>() << std::endl;
         if (py::isinstance<py::int_>(val))
         {
             auto mlir_type = mllvm::LLVMType::getIntNTy(&dialect, 64);
