@@ -11,6 +11,7 @@ from numba.core.errors import (LoweringError, new_error_context, TypingError,
 from numba.core.funcdesc import default_mangler
 from numba.core.environment import Environment
 
+_use_mlir = True
 
 _VarArgItem = namedtuple("_VarArgItem", ("vararg", "index"))
 
@@ -170,8 +171,9 @@ class BaseLower(object):
         # Run target specific post lowering transformation
         self.context.post_lowering(self.module, self.library)
 
-        # Materialize LLVM Module
-        # self.library.add_ir_module(self.module)
+        if not _use_mlir:
+            # Materialize LLVM Module
+            self.library.add_ir_module(self.module)
 
     def extract_function_arguments(self):
         self.fnargs = self.call_conv.decode_arguments(self.builder,
@@ -198,15 +200,16 @@ class BaseLower(object):
         # self.func_ir.dump()
         self.setup_function(fndesc)
 
-        self.library.add_llvm_module(mod);
+        if _use_mlir:
+            self.library.add_llvm_module(mod);
+        else:
+            # Init argument values
+            self.extract_function_arguments()
+            entry_block_tail = self.lower_function_body()
 
-        # # Init argument values
-        # self.extract_function_arguments()
-        # entry_block_tail = self.lower_function_body()
-
-        # # Close tail of entry block
-        # self.builder.position_at_end(entry_block_tail)
-        # self.builder.branch(self.blkmap[self.firstblk])
+            # Close tail of entry block
+            self.builder.position_at_end(entry_block_tail)
+            self.builder.branch(self.blkmap[self.firstblk])
 
     def lower_function_body(self):
         """
