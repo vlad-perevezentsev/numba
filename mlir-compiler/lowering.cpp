@@ -113,6 +113,8 @@ struct inst_handles
         auto ops = py::module::import("operator");
 
         add = ops.attr("add");
+
+        eq = ops.attr("eq");
         gt = ops.attr("gt");
     }
 
@@ -126,6 +128,8 @@ struct inst_handles
     py::handle Expr;
 
     py::handle add;
+
+    py::handle eq;
     py::handle gt;
 };
 
@@ -250,6 +254,14 @@ private:
         if (op.is(insts.add))
         {
             return builder.create<mllvm::AddOp>(builder.getUnknownLoc(), lhs, rhs);
+        }
+        if (op.is(insts.eq))
+        {
+            assert(lhs.getType() == rhs.getType());
+            if (lhs.getType().cast<mllvm::LLVMType>().isIntegerTy())
+            {
+                return builder.create<mllvm::ICmpOp>(builder.getUnknownLoc(), mllvm::ICmpPredicate::eq, lhs, rhs);
+            }
         }
         if (op.is(insts.gt))
         {
