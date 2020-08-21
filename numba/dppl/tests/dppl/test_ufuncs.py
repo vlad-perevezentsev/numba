@@ -62,14 +62,14 @@ def _make_ufunc_usecase(ufunc):
 
 def _make_unary_ufunc_op_usecase(ufunc_op):
     ldict = {}
-    exec("def fn(x):\n    return {0}(x)".format(ufunc_op), globals(), ldict)
+    exec("def fn(x,arr):\n    arr = {0}(x)".format(ufunc_op), globals(), ldict)
     fn = ldict["fn"]
     fn.__name__ = "usecase_{0}".format(hash(ufunc_op))
     return fn
 
 def _make_binary_ufunc_op_usecase(ufunc_op):
     ldict = {}
-    exec("def fn(x,y):\n    return x{0}y".format(ufunc_op), globals(), ldict)
+    exec("def fn(x,y, arr):\n    arr = x{0}y".format(ufunc_op), globals(), ldict)
     fn = ldict["fn"]
     fn.__name__ = "usecase_{0}".format(hash(ufunc_op))
     return fn
@@ -200,9 +200,6 @@ class TestUFuncs(BaseUFuncTest, TestCase):
 
             input_types = (input_type,) * ufunc.nin
             output_types = (output_type,) * ufunc.nout
-            # cr = self.cache.compile(pyfunc, input_types + output_types,
-            #                         flags=flags)
-            # cfunc = cr.entry_point
             cfunc = dppl.kernel(pyfunc)
 
             if isinstance(args[0], np.ndarray):
@@ -217,7 +214,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                     for out_ty in output_types
                 ]
                 global_size = args[0].size
-                # print("global_size", global_size)
+
             else:
                 results = [
                     np.zeros(1, dtype=out_ty.dtype.name)
@@ -228,7 +225,6 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                     for out_ty in output_types
                 ]
                 global_size = 1
-                # print("global_size", global_size)
 
             invalid_flag = False
             with warnings.catch_warnings(record=True) as warnlist:
@@ -552,7 +548,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         self.basic_ufunc_test(np.fmin, flags=flags)
 
 
-    ############################################################################
+    ###########################################################################
     # Floating functions
 
     def bool_additional_inputs(self):
@@ -667,10 +663,6 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                     not isinstance(output_type, types.Array)):
                 continue
 
-            # cr = self.cache.compile(pyfunc,
-            #                         (input1_type, input2_type, output_type),
-            #                         flags=flags)
-            # cfunc = cr.entry_point
             cfunc = dppl.kernel(pyfunc)
 
             if isinstance(input1_operand, np.ndarray):
@@ -690,7 +682,6 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                 expected = np.zeros(1, dtype=output_type.dtype.name)
                 global_size = 1
 
-            # cfunc(input1_operand, input2_operand, result)
             cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input1_operand, input2_operand, result)
             pyfunc(input1_operand, input2_operand, expected)
 
@@ -725,16 +716,10 @@ class TestUFuncs(BaseUFuncTest, TestCase):
 
             input_type = types.Array(types.uint64, x.ndim, 'C')
             output_type = types.Array(types.int64, result.ndim, 'C')
-
-            # cr = self.cache.compile(pyfunc, (input_type, output_type),
-            #                         flags=no_pyobj_flags)
-            # cfunc = cr.entry_point
             cfunc = dppl.kernel(pyfunc)
 
             expected = np.zeros(result.shape, dtype=result.dtype)
             np.negative(x, expected)
-
-            # cfunc(x, result)
             global_size = expected.size
             cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, result)
             self.assertPreciseEqual(result, expected)
@@ -761,15 +746,9 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input2_type = types.Array(types.uint64, y.ndim, 'C')
             output_type = types.Array(types.uint64, max(x.ndim, y.ndim), 'C')
 
-            # cr = self.cache.compile(pyfunc, (input1_type, input2_type, output_type),
-            #                         flags=no_pyobj_flags)
-            # cfunc = cr.entry_point
             cfunc = dppl.kernel(pyfunc)
-
             expected = np.add(x, y)
             result = np.zeros(expected.shape, dtype='u8')
-
-            # cfunc(x, y, result)
             global_size = result.size
             cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y, result)
             self.assertPreciseEqual(result, expected)
@@ -783,7 +762,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
     #         #                       flags=no_pyobj_flags)
     #         cfunc = dppl.kernel(myadd)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('No implicit output')
     def test_broadcast_implicit_output_npm_nrt(self):
         def pyfunc(a0, a1):
             return np.add(a0, a1)
@@ -806,18 +785,14 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input1_type = types.Array(types.uint64, x.ndim, 'C')
             input2_type = types.Array(types.uint64, y.ndim, 'C')
 
-            # cr = self.cache.compile(pyfunc, (input1_type, input2_type),
-            #                         flags=enable_nrt_flags)
-            # cfunc = cr.entry_point
             cfunc = dppl.kernel(pyfunc)
 
             expected = np.add(x, y)
             global_size = max(x.size, y.size)
             result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y)
-            # result = cfunc(x, y)
             np.testing.assert_array_equal(expected, result)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('No implicit output')
     def test_implicit_output_layout_binary(self):
         def pyfunc(a0, a1):
             return np.add(a0, a1)
@@ -844,11 +819,8 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         testcases += [(Z, Z)]
 
         for arg0, arg1 in testcases:
-            # cr = self.cache.compile(pyfunc, (typeof(arg0), typeof(arg1)),
-            #                         flags=enable_nrt_flags)
             cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(arg0, arg1)
-            # result = cr.entry_point(arg0, arg1)
             global_size = max(arg0.size, arg1.size)
             result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0, arg1)
 
@@ -858,7 +830,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                              result.flags.f_contiguous)
             np.testing.assert_array_equal(expected, result)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
+    @unittest.skip('No implicit output')
     def test_implicit_output_layout_unary(self):
         def pyfunc(a0):
             return np.sqrt(a0)
@@ -880,11 +852,8 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         assert not Z.flags.f_contiguous
 
         for arg0 in [X, Y, Z]:
-            # cr = self.cache.compile(pyfunc, (typeof(arg0),),
-            #                         flags=enable_nrt_flags)
             cfunc = dppl.kernel(pyfunc)
             expected = pyfunc(arg0)
-            # result = cr.entry_point(arg0)
             global_size = arg0.size
             result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0)
 
@@ -906,25 +875,60 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                       skip_inputs=[], additional_inputs=[],
                       int_output_type=None, float_output_type=None):
         operator_func = _make_unary_ufunc_op_usecase(operator)
-        inputs = list(self.inputs)
-        inputs.extend(additional_inputs)
+        inputs = list(self.inputs) + additional_inputs
         pyfunc = operator_func
         for input_tuple in inputs:
-            input_operand, input_type = input_tuple
+            input_operand = input_tuple[0]
+            input_type = input_tuple[1]
 
-            if ((input_type in skip_inputs) or
-                (not isinstance(input_type, types.Array))):
-                continue
+            if ((input_type in skip_inputs) or (not isinstance(input_type, types.Array))):
+            	continue
 
-            # cr = self.cache.compile(pyfunc, (input_type,),
-            #                         flags=flags)
-            # cfunc = cr.entry_point
+            output_type = self._determine_output_type(input_type, int_output_type, float_output_type)
             cfunc = dppl.kernel(pyfunc)
-            expected = pyfunc(input_operand)
-            # got = cfunc(input_operand)
-            global_size = input_operand.size
-            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand)
-            self._check_results(expected, got)
+            results = [
+            	np.zeros(1, dtype=output_type.dtype.name)
+            ]
+            expected = [
+            	np.zeros(1, dtype=output_type.dtype.name)
+                ]
+
+            global_size = 1
+            invalid_flag = False
+            with warnings.catch_warnings(record=True) as warnlist:
+                warnings.simplefilter('always')
+                pyfunc(input_operand, *results)
+
+                warnmsg = "invalid value encountered"
+                for thiswarn in warnlist:
+
+                    if (issubclass(thiswarn.category, RuntimeWarning)
+                        and str(thiswarn.message).startswith(warnmsg)):
+                        invalid_flag = True
+
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand, *expected)
+
+            for expected_i, result_i in zip(expected, results):
+                msg = '\n'.join(["operator '{0}' failed",
+                                 "inputs ({1}):", "{2}",
+                                 "got({3})", "{4}",
+                                 "expected ({5}):", "{6}"
+                                 ]).format(operator,
+                                           input_type, input_operand,
+                                           output_type, result_i,
+                                           expected_i.dtype, expected_i)
+                try:
+                    np.testing.assert_array_almost_equal(
+                        expected_i, result_i,
+                        decimal=5,
+                        err_msg=msg)
+                except AssertionError:
+                    if invalid_flag:
+                        # Allow output to mismatch for invalid input
+                        print("Output mismatch for invalid input",
+                              input_tuple, result_i, expected_i)
+                    else:
+                        raise
 
     def binary_op_test(self, operator, flags=enable_nrt_flags,
                        skip_inputs=[], additional_inputs=[],
@@ -962,15 +966,53 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                 if positive_rhs and input_operand1 < zero:
                     continue
 
-            # cr = self.cache.compile(pyfunc, (input_type0, input_type1),
-            #                         flags=flags)
-            # cfunc = cr.entry_point
+            output_type = self._determine_output_type(input_type, int_output_type, float_output_type)
             cfunc = dppl.kernel(pyfunc)
-            expected = pyfunc(input_operand0, input_operand1)
-            # got = cfunc(input_operand0, input_operand1)
-            global_size = input_operand0.size
-            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand0, input_operand1)
-            self._check_results(expected, got)
+            results = [
+                np.zeros(1, dtype=output_type.dtype.name)
+            ]
+            expected = [
+                np.zeros(1, dtype=output_type.dtype.name)
+                ]
+
+            global_size = 1
+            invalid_flag = False
+            with warnings.catch_warnings(record=True) as warnlist:
+                warnings.simplefilter('always')
+                pyfunc(input_operand0, input_operand1, *results)
+
+                warnmsg = "invalid value encountered"
+                for thiswarn in warnlist:
+
+                    if (issubclass(thiswarn.category, RuntimeWarning)
+                        and str(thiswarn.message).startswith(warnmsg)):
+                        invalid_flag = True
+
+            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand0, input_operand1, *expected)
+
+            for expected_i, result_i in zip(expected, results):
+                msg = '\n'.join(["operator '{0}' failed",
+                                 "input ({1}):", "{2}",
+                                 "input ({3}):", "{4}",
+                                 "got({5})", "{6}",
+                                 "expected ({7}):", "{8}"
+                                 ]).format(operator,
+                                           input_type, input_operand1,
+                                           input_type0, input_operand0,
+                                           output_type, result_i,
+                                           expected_i.dtype, expected_i)
+                try:
+                    np.testing.assert_array_almost_equal(
+                        expected_i, result_i,
+                        decimal=5,
+                        err_msg=msg)
+                except AssertionError:
+                    if invalid_flag:
+                        # Allow output to mismatch for invalid input
+                        print("Output mismatch for invalid input",
+                              input_tuple, result_i, expected_i)
+                    else:
+                        raise
 
     def bitwise_additional_inputs(self):
         # For bitwise operators, we want to check the results for boolean
@@ -1019,15 +1061,12 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             	global_size = rhs.size
             else:
             	global_size = 1
-            # cr = self.cache.compile(pyfunc, (lhs_type, rhs_type),
-            #                         flags=no_pyobj_flags)
-            # cfunc = cr.entry_point
+
             cfunc = dppl.kernel(pyfunc)
             expected = lhs.copy()
             pyfunc(expected, rhs)
             got = lhs.copy()
             cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](got, rhs)
-            # cfunc(got, rhs)
             self.assertPreciseEqual(got, expected)
 
     def inplace_float_op_test(self, operator, lhs_values, rhs_values):
@@ -1050,15 +1089,12 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
     # ____________________________________________________________
     # Unary operators
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_unary_positive_array_op(self):
         self.unary_op_test('+')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_unary_negative_array_op(self):
         self.unary_op_test('-')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_unary_invert_array_op(self):
         self.unary_op_test('~',
                            skip_inputs=[types.float32, types.float64,
@@ -1143,25 +1179,20 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
     # ____________________________________________________________
     # Binary operators
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_add_array_op(self):
         self.binary_op_test('+')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_subtract_array_op(self):
         self.binary_op_test('-')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_multiply_array_op(self):
         self.binary_op_test('*')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_divide_array_op(self):
         int_out_type = None
         int_out_type = types.float64
         self.binary_op_test('/', int_output_type=int_out_type)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_floor_divide_array_op(self):
         # Avoid floating-point zeros as x // 0.0 can have varying results
         # depending on the algorithm (which changed across Numpy versions)
@@ -1188,55 +1219,42 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             ]
         self.binary_op_test('//')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_remainder_array_op(self):
         self.binary_op_test('%')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_power_array_op(self):
         self.binary_op_test('**', positive_rhs=True)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_left_shift_array_op(self):
         self.binary_int_op_test('<<', positive_rhs=True)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_right_shift_array_op(self):
         self.binary_int_op_test('>>', positive_rhs=True)
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_bitwise_and_array_op(self):
         self.binary_bitwise_op_test('&')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_bitwise_or_array_op(self):
         self.binary_bitwise_op_test('|')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_bitwise_xor_array_op(self):
         self.binary_bitwise_op_test('^')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_equal_array_op(self):
         self.binary_op_test('==')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_greater_array_op(self):
         self.binary_op_test('>')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_greater_equal_array_op(self):
         self.binary_op_test('>=')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_less_array_op(self):
         self.binary_op_test('<')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_less_equal_array_op(self):
         self.binary_op_test('<=')
 
-    @unittest.skip('Only accept returning of array passed into the function as argument')
     def test_not_equal_array_op(self):
         self.binary_op_test('!=')
 
@@ -1497,7 +1515,6 @@ class _LoopTypesTester(TestCase):
             self.random.shuffle(arr)
         py_args = [a.copy() for a in c_args]
 
-        # cr.entry_point(*c_args)
         global_size = len(py_args)
         cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](*c_args)
         fn(*py_args)
