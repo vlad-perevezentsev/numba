@@ -104,6 +104,7 @@ struct inst_handles
         Assign = mod.attr("Assign");
         Del = mod.attr("Del");
         Return = mod.attr("Return");
+        Branch = mod.attr("Branch");
 
         Arg = mod.attr("Arg");
         Const = mod.attr("Const");
@@ -121,6 +122,7 @@ struct inst_handles
     py::handle Assign;
     py::handle Del;
     py::handle Return;
+    py::handle Branch;
 
     py::handle Arg;
     py::handle Const;
@@ -167,12 +169,14 @@ struct lowerer
     py::bytes lower(const py::object& compilation_context, const py::object& func_ir)
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
+        var_type_resolver = compilation_context["get_var_type"];
         auto typ = get_func_type(compilation_context["fntype"]);
         auto name = compilation_context["fnname"]().cast<std::string>();
         func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
         mod.push_back(func);
 //        mod.dump();
+        assert(mlir::succeeded(mod.verify()));
         auto llvmmod = mlir::translateModuleToLLVMIR(mod);
 //        llvmmod->dump();
         return py::bytes(serialize_mod(*llvmmod));
@@ -185,10 +189,12 @@ private:
     mlir::Block::BlockArgListType fnargs;
     mlir::Block* entry_bb = nullptr;
     std::vector<mlir::Block*> blocks;
+    std::unordered_map<int, mlir::Block*> blocks_map;
     std::vector<mlir::Value> locals;
     std::unordered_map<std::string, mlir::Value> vars;
     inst_handles insts;
     type_cache types;
+    py::handle var_type_resolver;
 
     void lower_func_body(const py::object& func_ir)
     {
@@ -197,14 +203,16 @@ private:
         fnargs = func.getArguments().slice(2);
         auto ir_blocks = get_blocks(func_ir);
         assert(!ir_blocks.empty());
-        blocks.resize(ir_blocks.size());
-        std::generate(blocks.begin(), blocks.end(), [&](){ return func.addBlock(); });
-
-        std::size_t i = 0;
-        for (auto& it : ir_blocks)
+        blocks.reserve(ir_blocks.size());
+        for (std::size_t i = 0; i < ir_blocks.size(); ++i)
         {
-            lower_block(blocks[i], it.second);
-            ++i;
+            blocks.push_back(func.addBlock());
+            blocks_map[ir_blocks[i].first] = blocks.back();
+        }
+
+        for (std::size_t i = 0; i < ir_blocks.size(); ++i)
+        {
+            lower_block(blocks[i], ir_blocks[i].second);
         }
 
         builder.setInsertionPointToEnd(entry_bb);
@@ -237,6 +245,10 @@ private:
         {
             retvar(inst.attr("value").attr("name"));
         }
+        else if (py::isinstance(inst, insts.Branch))
+        {
+            branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
+        }
         else
         {
             report_error(llvm::Twine("lower_inst not handled: \"") + py::str(inst.get_type()).cast<std::string>() + "\"");
@@ -245,7 +257,7 @@ private:
 
     mllvm::LLVMType get_ll_type(const py::handle& name)
     {
-        return mllvm::LLVMType::getInt64Ty(&dialect); // TODO
+        return parse_type(py::str(var_type_resolver(name)).cast<std::string>());
     }
 
     mlir::Value resolve_op(mlir::Value lhs, mlir::Value rhs, const py::handle& op)
@@ -285,6 +297,17 @@ private:
         return resolve_op(lhs, rhs, op);
     }
 
+    mlir::Value lower_call(const py::handle& expr)
+    {
+        auto args = expr.attr("args").cast<py::list>();
+        auto vararg = expr.attr("vararg");
+        auto kws = expr.attr("kws");
+        // TODO fold args
+
+        // TODO: hardcode for bool
+        return loadvar(args[0].attr("name"));
+    }
+
     mlir::Value lower_expr(const py::handle& expr)
     {
         auto op = expr.attr("op").cast<std::string>();
@@ -297,6 +320,10 @@ private:
             auto val = loadvar(expr.attr("value").attr("name"));
             // TODO cast
             return val;
+        }
+        else if (op == "call")
+        {
+            return lower_call(expr);
         }
         else
         {
@@ -433,6 +460,16 @@ private:
         auto mlir_type = mllvm::LLVMType::getIntNTy(&dialect, 32);
         mlir::Value ret = builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, builder.getI32IntegerAttr(0));
         builder.create<mllvm::ReturnOp>(builder.getUnknownLoc(), ret);
+    }
+
+    void branch(const py::handle& cond, const py::handle& tr, const py::handle& fl)
+    {
+        auto c = loadvar(cond);
+        auto tr_block = blocks_map.find(tr.cast<int>())->second;
+        auto fl_block = blocks_map.find(fl.cast<int>())->second;
+        // TODO: casts
+
+        builder.create<mllvm::CondBrOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
     }
 
     mllvm::LLVMType parse_type(llvm::StringRef str)

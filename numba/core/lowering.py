@@ -189,6 +189,7 @@ class BaseLower(object):
             ctx = {}
             ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
             ctx['fnname'] = lambda: fndesc.mangled_name
+            ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
             import mlir_compiler
             mod_ir = mlir_compiler.lower_normal_function(ctx, self.func_ir)
             import llvmlite.binding as llvm
