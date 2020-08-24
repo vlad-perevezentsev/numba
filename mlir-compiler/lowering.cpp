@@ -176,7 +176,10 @@ struct lowerer
         lower_func_body(func_ir);
         mod.push_back(func);
 //        mod.dump();
-        assert(mlir::succeeded(mod.verify()));
+        if (mlir::failed(mod.verify()))
+        {
+            report_error("MLIR module validation failed");
+        }
         auto llvmmod = mlir::translateModuleToLLVMIR(mod);
 //        llvmmod->dump();
         return py::bytes(serialize_mod(*llvmmod));
