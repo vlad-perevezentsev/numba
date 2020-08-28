@@ -12,6 +12,16 @@ def cond(a, b):
     else:
         return b
 
+def var(a):
+    c = 1
+    c = c + a
+    return c
+
+def loop(n):
+    res = 0
+    for i in range(n):
+        res += i
+    return res
 
 
 def test(func, params):
@@ -26,9 +36,11 @@ def test(func, params):
     except Exception as e:
         print(e)
         print('FAILED')
-    
+
 
 test(sum1, (5,))
 test(sum2, (3,4))
 test(cond, (5,6))
 test(cond, (8,7))
+test(var, (8,))
+#test(loop, (8,))

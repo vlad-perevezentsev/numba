@@ -107,9 +107,10 @@ struct inst_handles
         Branch = mod.attr("Branch");
 
         Arg = mod.attr("Arg");
+        Expr = mod.attr("Expr");
+        Var = mod.attr("Var");
         Const = mod.attr("Const");
         Global = mod.attr("Global");
-        Expr = mod.attr("Expr");
 
         auto ops = py::module::import("operator");
 
@@ -125,9 +126,10 @@ struct inst_handles
     py::handle Branch;
 
     py::handle Arg;
+    py::handle Expr;
+    py::handle Var;
     py::handle Const;
     py::handle Global;
-    py::handle Expr;
 
     py::handle add;
 
@@ -367,6 +369,18 @@ private:
             // TODO: cast
             return fnargs[index];
         }
+        if(py::isinstance(value, insts.Expr))
+        {
+            return lower_expr(value);
+        }
+        if(py::isinstance(value, insts.Var))
+        {
+            auto var = loadvar(value.attr("name"));
+
+            // TODO: cast
+            // TODO: incref
+            return var;
+        }
         if (py::isinstance(value, insts.Const) || py::isinstance(value, insts.Global))
         {
             // TODO unhardcode
@@ -376,10 +390,7 @@ private:
 //            return builder.create<mllvm::ConstantOp>(builder.getUnknownLoc(), mlir_type, val);
             return get_const_val(value.attr("value"));
         }
-        if(py::isinstance(value, insts.Expr))
-        {
-            return lower_expr(value);
-        }
+
         report_error(llvm::Twine("lower_assign not handled: \"") + py::str(value.get_type()).cast<std::string>() + "\"");
     }
 
