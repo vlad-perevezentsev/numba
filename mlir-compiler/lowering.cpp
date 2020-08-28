@@ -105,6 +105,7 @@ struct inst_handles
         Del = mod.attr("Del");
         Return = mod.attr("Return");
         Branch = mod.attr("Branch");
+        Jump = mod.attr("Jump");
 
         Arg = mod.attr("Arg");
         Expr = mod.attr("Expr");
@@ -124,6 +125,7 @@ struct inst_handles
     py::handle Del;
     py::handle Return;
     py::handle Branch;
+    py::handle Jump;
 
     py::handle Arg;
     py::handle Expr;
@@ -253,6 +255,10 @@ private:
         else if (py::isinstance(inst, insts.Branch))
         {
             branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
+        }
+        else if (py::isinstance(inst, insts.Jump))
+        {
+            jump(inst.attr("target"));
         }
         else
         {
@@ -484,6 +490,12 @@ private:
         // TODO: casts
 
         builder.create<mllvm::CondBrOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
+    }
+
+    void jump(const py::handle& target)
+    {
+        auto block = blocks_map.find(target.cast<int>())->second;
+        builder.create<mllvm::BrOp>(builder.getUnknownLoc(), mlir::None, block);
     }
 
     mllvm::LLVMType parse_type(llvm::StringRef str)

@@ -17,6 +17,13 @@ def var(a):
     c = c + a
     return c
 
+def jump(a, b):
+    c = 3
+    if a > 5:
+        c = c + a
+    c = c + b
+    return c
+
 def loop(n):
     res = 0
     for i in range(n):
@@ -43,4 +50,6 @@ test(sum2, (3,4))
 test(cond, (5,6))
 test(cond, (8,7))
 test(var, (8,))
+test(jump, (1,8))
+test(jump, (7,8))
 #test(loop, (8,))
