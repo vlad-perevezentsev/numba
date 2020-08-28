@@ -29,6 +29,10 @@ sum2_jit = numba.njit()(sum2)
 def call(a, b, c):
     return sum2_jit(a, sum2_jit(b, c))
 
+def tuple(a,b,c):
+    t = (a,b,c)
+    return t[0] + t[1] + t[2]
+
 def loop(n):
     res = 0
     for i in range(n):
@@ -58,4 +62,5 @@ test(var, (8,))
 test(jump, (1,8))
 test(jump, (7,8))
 #test(call, (1,2,3))
+#test(tuple, (1,2,3))
 #test(loop, (8,))
