@@ -24,6 +24,11 @@ def jump(a, b):
     c = c + b
     return c
 
+sum2_jit = numba.njit()(sum2)
+
+def call(a, b, c):
+    return sum2_jit(a, sum2_jit(b, c))
+
 def loop(n):
     res = 0
     for i in range(n):
@@ -52,4 +57,5 @@ test(cond, (8,7))
 test(var, (8,))
 test(jump, (1,8))
 test(jump, (7,8))
+#test(call, (1,2,3))
 #test(loop, (8,))
