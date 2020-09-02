@@ -135,7 +135,6 @@ class BaseUFuncTest(MemoryLeakMixin):
             (np.array([0,1], dtype=np.uint8), types.Array(types.uint8, 1, 'C')),
             (np.array([0,1], dtype=np.uint16), types.Array(types.uint16, 1, 'C')),
             ]
-        self.cache = CompilationCache()
 
     def _determine_output_type(self, input_type, int_output_type=None,
                                float_output_type=None):
@@ -200,14 +199,16 @@ class TestUFuncs(BaseUFuncTest, TestCase):
 
             input_types = (input_type,) * ufunc.nin
             output_types = (output_type,) * ufunc.nout
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
 
             if isinstance(args[0], np.ndarray):
-                results = [
+                results_kernel = [
                     np.zeros(args[0].size,
                              dtype=out_ty.dtype.name)
                     for out_ty in output_types
                 ]
+                results_dppl = np.copy(results_kernel)
                 expected = [
                     np.zeros(args[0].size,
                                     dtype=out_ty.dtype.name)
@@ -216,10 +217,11 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                 global_size = args[0].size
 
             else:
-                results = [
+                results_kernel = [
                     np.zeros(1, dtype=out_ty.dtype.name)
                     for out_ty in output_types
                 ]
+                results_dppl = np.copy(results_kernel)
                 expected = [
                     np.zeros(1, dtype=out_ty.dtype.name)
                     for out_ty in output_types
@@ -238,29 +240,31 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                         and str(thiswarn.message).startswith(warnmsg)):
                         invalid_flag = True
 
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](*args, *results)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](*args, *results_kernel)
+            cfunc(*args, *results_dppl)
 
-            for expected_i, result_i in zip(expected, results):
-                msg = '\n'.join(["ufunc '{0}' failed",
-                                 "inputs ({1}):", "{2}",
-                                 "got({3})", "{4}",
-                                 "expected ({5}):", "{6}"
-                                 ]).format(ufunc.__name__,
-                                           input_type, input_operand,
-                                           output_type, result_i,
-                                           expected_i.dtype, expected_i)
-                try:
-                    np.testing.assert_array_almost_equal(
-                        expected_i, result_i,
-                        decimal=5,
-                        err_msg=msg)
-                except AssertionError:
-                    if invalid_flag:
-                        # Allow output to mismatch for invalid input
-                        print("Output mismatch for invalid input",
-                              input_tuple, result_i, expected_i)
-                    else:
-                        raise
+            for results in [results_kernel, results_dppl]:
+                for expected_i, result_i in zip(expected, results):
+                    msg = '\n'.join(["ufunc '{0}' failed",
+                                    "inputs ({1}):", "{2}",
+                                    "got({3})", "{4}",
+                                    "expected ({5}):", "{6}"
+                                    ]).format(ufunc.__name__,
+                                            input_type, input_operand,
+                                            output_type, result_i,
+                                            expected_i.dtype, expected_i)
+                    try:
+                        np.testing.assert_array_almost_equal(
+                            expected_i, result_i,
+                            decimal=5,
+                            err_msg=msg)
+                    except AssertionError:
+                        if invalid_flag:
+                            # Allow output to mismatch for invalid input
+                            print("Output mismatch for invalid input",
+                                input_tuple, result_i, expected_i)
+                        else:
+                            raise
 
     def basic_int_ufunc_test(self, name=None, flags=no_pyobj_flags):
         self.basic_ufunc_test(name, flags=flags,
@@ -663,33 +667,39 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                     not isinstance(output_type, types.Array)):
                 continue
 
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
 
             if isinstance(input1_operand, np.ndarray):
-                result = np.zeros(input1_operand.size,
+                result_kernel = np.zeros(input1_operand.size,
                                   dtype=output_type.dtype.name)
+                result_dppl = np.copy(result_kernel)
                 expected = np.zeros(input1_operand.size,
                                     dtype=output_type.dtype.name)
                 global_size = input1_operand.size
             elif isinstance(input2_operand, np.ndarray):
-                result = np.zeros(input2_operand.size,
+                result_kernel = np.zeros(input2_operand.size,
                                   dtype=output_type.dtype.name)
+                result_dppl = np.copy(result_kernel)
                 expected = np.zeros(input2_operand.size,
                                     dtype=output_type.dtype.name)
                 global_size = input2_operand.size
             else:
-                result = np.zeros(1, dtype=output_type.dtype.name)
+                result_kernel = np.zeros(1, dtype=output_type.dtype.name)
+                result_dppl = np.copy(result_kernel)
                 expected = np.zeros(1, dtype=output_type.dtype.name)
                 global_size = 1
 
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input1_operand, input2_operand, result)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](input1_operand, input2_operand, result_kernel)
+            cfunc(input1_operand, input2_operand, result_dppl)
             pyfunc(input1_operand, input2_operand, expected)
 
             scalar_type = getattr(output_type, 'dtype', output_type)
             prec = ('single'
                     if scalar_type in (types.float32, types.complex64)
                     else 'double')
-            self.assertPreciseEqual(expected, result, prec=prec)
+            for result in [result_kernel, result_dppl]:
+                self.assertPreciseEqual(expected, result, prec=prec)
 
     def test_broadcasting(self):
 
@@ -716,13 +726,18 @@ class TestUFuncs(BaseUFuncTest, TestCase):
 
             input_type = types.Array(types.uint64, x.ndim, 'C')
             output_type = types.Array(types.int64, result.ndim, 'C')
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
 
             expected = np.zeros(result.shape, dtype=result.dtype)
+            result_kernel = np.copy(result)
+            result_dppl = np.copy(result)
             np.negative(x, expected)
             global_size = expected.size
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, result)
-            self.assertPreciseEqual(result, expected)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](x, result_kernel)
+            cfunc(x, result_dppl)
+            for result in [result_kernel, result_dppl]:
+                self.assertPreciseEqual(result, expected)
 
         # Test binary ufunc
         pyfunc = _make_ufunc_usecase(np.add)
@@ -746,12 +761,16 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input2_type = types.Array(types.uint64, y.ndim, 'C')
             output_type = types.Array(types.uint64, max(x.ndim, y.ndim), 'C')
 
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
             expected = np.add(x, y)
-            result = np.zeros(expected.shape, dtype='u8')
+            result_kernel = np.zeros(expected.shape, dtype='u8')
+            result_dppl = np.copy(result_kernel)
             global_size = result.size
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y, result)
-            self.assertPreciseEqual(result, expected)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y, result_kernel)
+            cfunc(x, y, result_dppl)
+            for result in [result_kernel, result_dppl]:
+                self.assertPreciseEqual(result, expected)
 
     # def test_implicit_output_npm(self):
     #     with self.assertRaises(TypeError):
@@ -785,12 +804,15 @@ class TestUFuncs(BaseUFuncTest, TestCase):
             input1_type = types.Array(types.uint64, x.ndim, 'C')
             input2_type = types.Array(types.uint64, y.ndim, 'C')
 
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
 
             expected = np.add(x, y)
             global_size = max(x.size, y.size)
-            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y)
-            np.testing.assert_array_equal(expected, result)
+            result_kernel = cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](x, y)
+            result_dppl = cfunc(x, y)
+            for result in [result_kernel, result_dppl]:
+                np.testing.assert_array_equal(expected, result)
 
     @unittest.skip('No implicit output')
     def test_implicit_output_layout_binary(self):
@@ -819,16 +841,19 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         testcases += [(Z, Z)]
 
         for arg0, arg1 in testcases:
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
             expected = pyfunc(arg0, arg1)
             global_size = max(arg0.size, arg1.size)
-            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0, arg1)
+            result_kernel = cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0, arg1)
+            result_dppl = cfunc(arg0, arg1)
 
-            self.assertEqual(expected.flags.c_contiguous,
-                             result.flags.c_contiguous)
-            self.assertEqual(expected.flags.f_contiguous,
-                             result.flags.f_contiguous)
-            np.testing.assert_array_equal(expected, result)
+            for result in [result_kernel, result_dppl]:
+                self.assertEqual(expected.flags.c_contiguous,
+                                result.flags.c_contiguous)
+                self.assertEqual(expected.flags.f_contiguous,
+                                result.flags.f_contiguous)
+                np.testing.assert_array_equal(expected, result)
 
     @unittest.skip('No implicit output')
     def test_implicit_output_layout_unary(self):
@@ -852,16 +877,19 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         assert not Z.flags.f_contiguous
 
         for arg0 in [X, Y, Z]:
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
             expected = pyfunc(arg0)
             global_size = arg0.size
-            result = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0)
+            result_kernel = cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](arg0)
+            result_dppl = cfunc(arg0)
 
-            self.assertEqual(expected.flags.c_contiguous,
-                             result.flags.c_contiguous)
-            self.assertEqual(expected.flags.f_contiguous,
-                             result.flags.f_contiguous)
-            np.testing.assert_array_equal(expected, result)
+            for result in [result_kernel, result_dppl]:
+                self.assertEqual(expected.flags.c_contiguous,
+                                result.flags.c_contiguous)
+                self.assertEqual(expected.flags.f_contiguous,
+                                result.flags.f_contiguous)
+                np.testing.assert_array_equal(expected, result)
 
 
 
@@ -885,10 +913,12 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             	continue
 
             output_type = self._determine_output_type(input_type, int_output_type, float_output_type)
-            cfunc = dppl.kernel(pyfunc)
-            results = [
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
+            results_kernel = [
             	np.zeros(1, dtype=output_type.dtype.name)
             ]
+            results_dppl = np.copy(results_kernel)
             expected = [
             	np.zeros(1, dtype=output_type.dtype.name)
                 ]
@@ -897,7 +927,7 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             invalid_flag = False
             with warnings.catch_warnings(record=True) as warnlist:
                 warnings.simplefilter('always')
-                pyfunc(input_operand, *results)
+                pyfunc(input_operand, *expected)
 
                 warnmsg = "invalid value encountered"
                 for thiswarn in warnlist:
@@ -906,29 +936,31 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                         and str(thiswarn.message).startswith(warnmsg)):
                         invalid_flag = True
 
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand, *expected)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand, *results_kernel)
+            cfunc(input_operand, *results_dppl)
 
-            for expected_i, result_i in zip(expected, results):
-                msg = '\n'.join(["operator '{0}' failed",
-                                 "inputs ({1}):", "{2}",
-                                 "got({3})", "{4}",
-                                 "expected ({5}):", "{6}"
-                                 ]).format(operator,
-                                           input_type, input_operand,
-                                           output_type, result_i,
-                                           expected_i.dtype, expected_i)
-                try:
-                    np.testing.assert_array_almost_equal(
-                        expected_i, result_i,
-                        decimal=5,
-                        err_msg=msg)
-                except AssertionError:
-                    if invalid_flag:
-                        # Allow output to mismatch for invalid input
-                        print("Output mismatch for invalid input",
-                              input_tuple, result_i, expected_i)
-                    else:
-                        raise
+            for results in [results_kernel, results_dppl]:
+                for expected_i, result_i in zip(expected, results):
+                    msg = '\n'.join(["operator '{0}' failed",
+                                    "inputs ({1}):", "{2}",
+                                    "got({3})", "{4}",
+                                    "expected ({5}):", "{6}"
+                                    ]).format(operator,
+                                            input_type, input_operand,
+                                            output_type, result_i,
+                                            expected_i.dtype, expected_i)
+                    try:
+                        np.testing.assert_array_almost_equal(
+                            expected_i, result_i,
+                            decimal=5,
+                            err_msg=msg)
+                    except AssertionError:
+                        if invalid_flag:
+                            # Allow output to mismatch for invalid input
+                            print("Output mismatch for invalid input",
+                                input_tuple, result_i, expected_i)
+                        else:
+                            raise
 
     def binary_op_test(self, operator, flags=enable_nrt_flags,
                        skip_inputs=[], additional_inputs=[],
@@ -967,10 +999,12 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                     continue
 
             output_type = self._determine_output_type(input_type, int_output_type, float_output_type)
-            cfunc = dppl.kernel(pyfunc)
-            results = [
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
+            results_kernel = [
                 np.zeros(1, dtype=output_type.dtype.name)
             ]
+            results_dppl = np.copy(results_kernel)
             expected = [
                 np.zeros(1, dtype=output_type.dtype.name)
                 ]
@@ -979,7 +1013,7 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             invalid_flag = False
             with warnings.catch_warnings(record=True) as warnlist:
                 warnings.simplefilter('always')
-                pyfunc(input_operand0, input_operand1, *results)
+                pyfunc(input_operand0, input_operand1, *expected)
 
                 warnmsg = "invalid value encountered"
                 for thiswarn in warnlist:
@@ -988,31 +1022,33 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
                         and str(thiswarn.message).startswith(warnmsg)):
                         invalid_flag = True
 
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand0, input_operand1, *expected)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](input_operand0, input_operand1, *results_kernel)
+            cfunc(input_operand0, input_operand1, *results_dppl)
 
-            for expected_i, result_i in zip(expected, results):
-                msg = '\n'.join(["operator '{0}' failed",
-                                 "input ({1}):", "{2}",
-                                 "input ({3}):", "{4}",
-                                 "got({5})", "{6}",
-                                 "expected ({7}):", "{8}"
-                                 ]).format(operator,
-                                           input_type, input_operand1,
-                                           input_type0, input_operand0,
-                                           output_type, result_i,
-                                           expected_i.dtype, expected_i)
-                try:
-                    np.testing.assert_array_almost_equal(
-                        expected_i, result_i,
-                        decimal=5,
-                        err_msg=msg)
-                except AssertionError:
-                    if invalid_flag:
-                        # Allow output to mismatch for invalid input
-                        print("Output mismatch for invalid input",
-                              input_tuple, result_i, expected_i)
-                    else:
-                        raise
+            for results in [results_kernel, results_dppl]:
+                for expected_i, result_i in zip(expected, results):
+                    msg = '\n'.join(["operator '{0}' failed",
+                                    "input ({1}):", "{2}",
+                                    "input ({3}):", "{4}",
+                                    "got({5})", "{6}",
+                                    "expected ({7}):", "{8}"
+                                    ]).format(operator,
+                                            input_type, input_operand1,
+                                            input_type0, input_operand0,
+                                            output_type, result_i,
+                                            expected_i.dtype, expected_i)
+                    try:
+                        np.testing.assert_array_almost_equal(
+                            expected_i, result_i,
+                            decimal=5,
+                            err_msg=msg)
+                    except AssertionError:
+                        if invalid_flag:
+                            # Allow output to mismatch for invalid input
+                            print("Output mismatch for invalid input",
+                                input_tuple, result_i, expected_i)
+                        else:
+                            raise
 
     def bitwise_additional_inputs(self):
         # For bitwise operators, we want to check the results for boolean
@@ -1062,12 +1098,16 @@ class TestArrayOperators(BaseUFuncTest, TestCase):
             else:
             	global_size = 1
 
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
             expected = lhs.copy()
             pyfunc(expected, rhs)
-            got = lhs.copy()
-            cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](got, rhs)
-            self.assertPreciseEqual(got, expected)
+            result_kernel = lhs.copy()
+            result_dppl = np.copy(result_kernel)
+            cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](result_kernel, rhs)
+            cfunc(result_dppl, rhs)
+            for result in [result_kernel, result_dppl]:
+                self.assertPreciseEqual(result, expected)
 
     def inplace_float_op_test(self, operator, lhs_values, rhs_values):
         # Also accept integer inputs for the right operand (they should
@@ -1275,10 +1315,12 @@ class TestScalarUFuncs(TestCase):
         for tyargs, args in zip(arg_types, arg_values):
             # cr = compile_isolated(pyfunc, tyargs, flags=self._compile_flags)
             # cfunc = cr.entry_point
-            cfunc = dppl.kernel(pyfunc)
+            cfunc_kernel = dppl.kernel(pyfunc)
+            cfunc = njit(parallel={'offload':True})(pyfunc)
             # got = cfunc(*args)
             global_size = len(args)
-            got = cfunc[global_size, dppl.DEFAULT_LOCAL_SIZE](*args)
+            result_kernel = cfunc_kernel[global_size, dppl.DEFAULT_LOCAL_SIZE](*args)
+            result_dppl = cfunc(*args)
             expected = pyfunc(*_as_dtype_value(tyargs, args))
 
             msg = 'for args {0} typed {1}'.format(args, tyargs)
@@ -1320,7 +1362,8 @@ class TestScalarUFuncs(TestCase):
             else:
                 prec='exact'
 
-            self.assertPreciseEqual(got, expected, msg=msg, prec=prec)
+            for result in [result_kernel, result_dppl]:
+                self.assertPreciseEqual(result, expected, msg=msg, prec=prec)
 
 
     @unittest.skip('AssertionError')
