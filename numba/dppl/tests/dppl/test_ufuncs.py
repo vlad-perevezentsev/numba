@@ -31,7 +31,6 @@ enable_pyobj_flags.set("enable_pyobject")
 enable_pyobj_flags.set("no_rewrites")
 
 no_pyobj_flags = Flags()
-no_pyobj_flags.set("no_rewrites")
 no_pyobj_flags.set('no_compile')
 no_pyobj_flags.set('no_cpython_wrapper')
 
