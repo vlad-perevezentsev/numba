@@ -254,10 +254,16 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                                             output_type, result_i,
                                             expected_i.dtype, expected_i)
                     try:
-                        np.testing.assert_array_almost_equal(
-                            expected_i, result_i,
-                            decimal=5,
-                            err_msg=msg)
+                        if isinstance(output_type.dtype, types.Float):
+                            np.testing.assert_array_almost_equal(
+                                expected_i, result_i,
+                                decimal=1,
+                                err_msg=msg)
+                        else:
+                            np.testing.assert_array_almost_equal(
+                                expected_i, result_i,
+                                decimal=5,
+                                err_msg=msg)
                     except AssertionError:
                         if invalid_flag:
                             # Allow output to mismatch for invalid input
@@ -351,7 +357,7 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         self.test_abs_ufunc(flags=flags, ufunc=np.absolute)
 
     def test_fabs_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.fabs, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.fabs, flags=flags, kinds='fi', int_output_type=types.float64)
 
     @unittest.skip('InvalidFunctionCall: Unexpected llvm intrinsic')
     def test_rint_ufunc(self, flags=no_pyobj_flags):
@@ -364,31 +370,31 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         self.basic_ufunc_test(np.conj, flags=flags)
 
     def test_exp_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.exp, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.exp, flags=flags, int_output_type=types.float64)
 
     @unittest.skip('Open CL Runtime Error')
     def test_exp2_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.exp2, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.exp2, flags=flags, int_output_type=types.float64)
 
     @unittest.skip('AssertionError')
     def test_log_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.log, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.log, flags=flags, int_output_type=types.float64)
 
     @unittest.skip('Open CL Runtime Error')
     def test_log2_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.log2, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.log2, flags=flags, int_output_type=types.float64)
 
     def test_log10_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.log10, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.log10, flags=flags, int_output_type=types.float64)
 
     def test_expm1_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.expm1, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.expm1, flags=flags, int_output_type=types.float64)
 
     def test_log1p_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.log1p, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.log1p, flags=flags, int_output_type=types.float64)
 
     def test_sqrt_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.sqrt, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.sqrt, flags=flags, int_output_type=types.float64)
 
     def test_square_ufunc(self, flags=no_pyobj_flags):
         self.basic_ufunc_test(np.square, flags=flags)
@@ -411,44 +417,44 @@ class TestUFuncs(BaseUFuncTest, TestCase):
     # Trigonometric Functions
 
     def test_sin_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.sin, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.sin, flags=flags, int_output_type=types.float64)
 
     def test_cos_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.cos, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.cos, flags=flags, int_output_type=types.float64)
 
     def test_tan_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.tan, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.tan, flags=flags, int_output_type=types.float64)
 
     def test_arcsin_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arcsin, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arcsin, flags=flags, int_output_type=types.float64)
 
     def test_arccos_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arccos, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arccos, flags=flags, int_output_type=types.float64)
 
     def test_arctan_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arctan, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arctan, flags=flags, int_output_type=types.float64)
 
     def test_arctan2_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arctan2, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arctan2, flags=flags, int_output_type=types.float64)
 
     @unittest.skip('Open CL Runtime Error')
     def test_hypot_ufunc(self, flags=no_pyobj_flags):
         self.basic_ufunc_test(np.hypot, kinds='f')
 
     def test_sinh_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.sinh, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.sinh, flags=flags, int_output_type=types.float64)
 
     def test_cosh_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.cosh, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.cosh, flags=flags, int_output_type=types.float64)
 
     def test_tanh_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.tanh, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.tanh, flags=flags, int_output_type=types.float64)
 
     def test_arcsinh_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arcsinh, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arcsinh, flags=flags, int_output_type=types.float64)
 
     def test_arccosh_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.arccosh, flags=flags, kinds='cf')
+        self.basic_ufunc_test(np.arccosh, flags=flags, int_output_type=types.float64)
 
     def test_arctanh_ufunc(self, flags=no_pyobj_flags):
         # arctanh is only valid is only finite in the range ]-1, 1[
@@ -465,19 +471,19 @@ class TestUFuncs(BaseUFuncTest, TestCase):
                    types.Array(types.int64, 1, 'C'), types.int64]
 
         self.basic_ufunc_test(np.arctanh, skip_inputs=to_skip, flags=flags,
-                              kinds='cf')
+                              int_output_type=types.float64)
 
     def test_deg2rad_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.deg2rad, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.deg2rad, flags=flags, kinds='fi', int_output_type=types.float64)
 
     def test_rad2deg_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.rad2deg, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.rad2deg, flags=flags, kinds='fi', int_output_type=types.float64)
 
     def test_degrees_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.degrees, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.degrees, flags=flags, kinds='fi', int_output_type=types.float64)
 
     def test_radians_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.radians, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.radians, flags=flags, kinds='fi', int_output_type=types.float64)
 
     ############################################################################
     # Bit-twiddling Functions
@@ -607,13 +613,13 @@ class TestUFuncs(BaseUFuncTest, TestCase):
         self.basic_ufunc_test(np.frexp, flags=flags, kinds='f')
 
     def test_floor_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.floor, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.floor, flags=flags, kinds='fi', int_output_type=types.float64)
 
     def test_ceil_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.ceil, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.ceil, flags=flags, kinds='fi', int_output_type=types.float64)
 
     def test_trunc_ufunc(self, flags=no_pyobj_flags):
-        self.basic_ufunc_test(np.trunc, flags=flags, kinds='f')
+        self.basic_ufunc_test(np.trunc, flags=flags, kinds='fi', int_output_type=types.float64)
 
     @unittest.skip('Open CL Runtime Error')
     def test_spacing_ufunc(self, flags=no_pyobj_flags):
