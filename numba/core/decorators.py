@@ -11,6 +11,7 @@ import logging
 from numba.core.errors import DeprecationError, NumbaDeprecationWarning
 from numba.stencils.stencil import stencil
 from numba.core import config, sigutils, registry, cpu_dispatcher
+from numba.dppl import gpu_dispatcher
 
 
 _logger = logging.getLogger(__name__)

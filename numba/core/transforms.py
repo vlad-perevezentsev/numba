@@ -323,8 +323,9 @@ def with_lifting(func_ir, typingctx, targetctx, flags, locals):
     """
     from numba.core import postproc
 
-    def dispatcher_factory(func_ir, objectmode=False, **kwargs):
+    def dispatcher_factory(func_ir, objectmode=False, dppl_mode=False, **kwargs):
         from numba.core.dispatcher import LiftedWith, ObjModeLiftedWith
+        from numba.dppl.withcontexts import DPPLLiftedWith
 
         myflags = flags.copy()
         if objectmode:
@@ -335,6 +336,8 @@ def with_lifting(func_ir, typingctx, targetctx, flags, locals):
             myflags.force_pyobject = True
             myflags.no_cpython_wrapper = False
             cls = ObjModeLiftedWith
+        elif dppl_mode:
+            cls = DPPLLiftedWith
         else:
             cls = LiftedWith
         return cls(func_ir, typingctx, targetctx, myflags, locals, **kwargs)
