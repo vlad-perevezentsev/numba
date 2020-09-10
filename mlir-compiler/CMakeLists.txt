@@ -12,8 +12,12 @@ find_package(MLIR REQUIRED CONFIG)
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
-
+include(TableGen)
+include(AddLLVM)
+include(AddMLIR)
 include(HandleLLVMOptions)
+
+add_subdirectory(include/plier)
 
 set(SOURCES_LIST
     lowering.cpp
@@ -23,6 +27,8 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     lowering.hpp
     type_parser.hpp
+    include/plier/dialect.hpp
+    include/plier/PlierOps.td
     )
 
 pybind11_add_module(${PROJECT_NAME} ${SOURCES_LIST} ${HEADERS_LIST})
@@ -46,4 +52,7 @@ target_include_directories(${PROJECT_NAME}
     ./include
     ${LLVM_INCLUDE_DIRS}
     ${MLIR_INCLUDE_DIRS}
+    ${PROJECT_BINARY_DIR}/include
     )
+
+add_dependencies(${PROJECT_NAME} MLIRPlierOpsIncGen)

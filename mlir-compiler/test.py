@@ -1,5 +1,8 @@
 import numba
 
+def ret(a):
+    return a
+
 def sum1(a):
     return a + 42
 
@@ -54,6 +57,7 @@ def test(func, params):
         print('FAILED')
 
 
+test(ret, (7,))
 test(sum1, (5,))
 test(sum2, (3,4))
 test(cond, (5,6))

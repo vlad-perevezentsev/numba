@@ -161,11 +161,27 @@ private:
     std::unordered_map<std::string, Type> typemap;
 };
 
-struct lowerer
+struct lowerer_base
+{
+    lowerer_base(): builder(&ctx) {}
+
+protected:
+    mlir::MLIRContext ctx;
+    mlir::OpBuilder builder;
+    mlir::Block::BlockArgListType fnargs;
+    mlir::Block* entry_bb = nullptr;
+    std::vector<mlir::Block*> blocks;
+    std::unordered_map<int, mlir::Block*> blocks_map;
+    std::vector<mlir::Value> locals;
+    std::unordered_map<std::string, mlir::Value> vars;
+    inst_handles insts;
+    type_cache types;
+};
+
+struct lowerer : public lowerer_base
 {
     lowerer():
-        dialect(get_dialect(ctx)),
-        builder(&ctx)
+        dialect(get_dialect(ctx))
     {
 
     }
@@ -189,18 +205,9 @@ struct lowerer
         return py::bytes(serialize_mod(*llvmmod));
     }
 private:
-    mlir::MLIRContext ctx;
+
     mllvm::LLVMDialect& dialect;
-    mlir::OpBuilder builder;
     mllvm::LLVMFuncOp func;
-    mlir::Block::BlockArgListType fnargs;
-    mlir::Block* entry_bb = nullptr;
-    std::vector<mlir::Block*> blocks;
-    std::unordered_map<int, mlir::Block*> blocks_map;
-    std::vector<mlir::Value> locals;
-    std::unordered_map<std::string, mlir::Value> vars;
-    inst_handles insts;
-    type_cache types;
     py::handle var_type_resolver;
 
     void lower_func_body(const py::object& func_ir)
