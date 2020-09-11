@@ -22,6 +22,9 @@
 
 #include <llvm/Bitcode/BitcodeWriter.h>
 
+#include <mlir/Dialect/StandardOps/IR/Ops.h>
+#include "plier/dialect.hpp"
+
 #include <iostream>
 
 namespace py = pybind11;
@@ -54,9 +57,10 @@ std::string to_str(T& obj)
     return ret;
 }
 
-mllvm::LLVMDialect& get_dialect(mlir::MLIRContext& ctx)
+template<typename T>
+T& get_dialect(mlir::MLIRContext& ctx)
 {
-    auto dialect = ctx.getRegisteredDialect<mllvm::LLVMDialect>();
+    auto dialect = ctx.getRegisteredDialect<T>();
     assert(nullptr != dialect);
     return *dialect;
 }
@@ -143,7 +147,7 @@ struct type_cache
 {
     using Type = mllvm::LLVMType;
 
-    Type get_type(mllvm::LLVMDialect& dialect, llvm::StringRef str)
+    Type get_type(mlir::MLIRContext& context, llvm::StringRef str)
     {
         assert(!str.empty());
         auto s = str.str();
@@ -152,7 +156,7 @@ struct type_cache
         {
             return it->second;
         }
-        auto type = parse_type(dialect, str);
+        auto type = parse_type(context, str);
         typemap[s] = type;
         return type;
     }
@@ -169,19 +173,16 @@ protected:
     mlir::MLIRContext ctx;
     mlir::OpBuilder builder;
     mlir::Block::BlockArgListType fnargs;
-    mlir::Block* entry_bb = nullptr;
     std::vector<mlir::Block*> blocks;
     std::unordered_map<int, mlir::Block*> blocks_map;
-    std::vector<mlir::Value> locals;
     std::unordered_map<std::string, mlir::Value> vars;
     inst_handles insts;
-    type_cache types;
 };
 
 struct lowerer : public lowerer_base
 {
     lowerer():
-        dialect(get_dialect(ctx))
+        dialect(get_dialect<mllvm::LLVMDialect>(ctx))
     {
 
     }
@@ -205,9 +206,10 @@ struct lowerer : public lowerer_base
         return py::bytes(serialize_mod(*llvmmod));
     }
 private:
-
     mllvm::LLVMDialect& dialect;
     mllvm::LLVMFuncOp func;
+    mlir::Block* entry_bb = nullptr;
+    type_cache types;
     py::handle var_type_resolver;
 
     void lower_func_body(const py::object& func_ir)
@@ -507,7 +509,7 @@ private:
 
     mllvm::LLVMType parse_type(llvm::StringRef str)
     {
-        return types.get_type(dialect, str);
+        return types.get_type(ctx, str);
     }
 
     mllvm::LLVMType get_func_type(const py::handle& typedesc)
@@ -526,10 +528,207 @@ private:
         return Type::getFunctionTy(ret, args, false);
     }
 };
+
+struct plier_lowerer : public lowerer_base
+{
+    plier_lowerer():
+        dialect(get_dialect<plier::PlierDialect>(ctx))
+    {
+
+    }
+
+    py::bytes lower(const py::object& compilation_context, const py::object& func_ir)
+    {
+        auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
+        auto name = compilation_context["fnname"]().cast<std::string>();
+        auto typ = get_func_type(compilation_context["fndesc"]);
+        func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
+        lower_func_body(func_ir);
+        mod.push_back(func);
+        mod.dump();
+        if (mlir::failed(mod.verify()))
+        {
+            report_error("MLIR module validation failed");
+        }
+//        var_type_resolver = compilation_context["get_var_type"];
+//        auto typ = get_func_type(compilation_context["fntype"]);
+//        func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), name, typ);
+//
+//        auto llvmmod = mlir::translateModuleToLLVMIR(mod);
+//        //        llvmmod->dump();
+//        return py::bytes(serialize_mod(*llvmmod));
+        return {};
+    }
+private:
+    plier::PlierDialect& dialect;
+    mlir::FuncOp func;
+
+    void lower_func_body(const py::object& func_ir)
+    {
+        auto ir_blocks = get_blocks(func_ir);
+        assert(!ir_blocks.empty());
+        blocks.reserve(ir_blocks.size());
+        for (std::size_t i = 0; i < ir_blocks.size(); ++i)
+        {
+            auto block = (0 == i ? func.addEntryBlock() : func.addBlock());
+            blocks.push_back(block);
+            blocks_map[ir_blocks[i].first] = block;
+        }
+        fnargs = func.getArguments();
+
+        for (std::size_t i = 0; i < ir_blocks.size(); ++i)
+        {
+            lower_block(blocks[i], ir_blocks[i].second);
+        }
+    }
+
+    void lower_block(mlir::Block* bb, const py::handle& ir_block)
+    {
+        assert(nullptr != bb);
+        vars.clear();
+        builder.setInsertionPointToEnd(bb);
+        for (auto it : get_body(ir_block))
+        {
+            lower_inst(it);
+        }
+    }
+
+    void lower_inst(const py::handle& inst)
+    {
+        if (py::isinstance(inst, insts.Assign))
+        {
+            auto name = inst.attr("target").attr("name");
+            auto val = lower_assign(inst, name);
+            storevar(val, inst, name);
+        }
+        else if (py::isinstance(inst, insts.Del))
+        {
+            delvar(inst.attr("value"));
+        }
+        else if (py::isinstance(inst, insts.Return))
+        {
+            retvar(inst.attr("value").attr("name"));
+        }
+//        else if (py::isinstance(inst, insts.Branch))
+//        {
+//            branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
+//        }
+//        else if (py::isinstance(inst, insts.Jump))
+//        {
+//            jump(inst.attr("target"));
+//        }
+        else
+        {
+            report_error(llvm::Twine("lower_inst not handled: \"") + py::str(inst.get_type()).cast<std::string>() + "\"");
+        }
+    }
+
+    mlir::Value lower_assign(const py::handle& inst, const py::handle& name)
+    {
+        auto value = inst.attr("value");
+        if (py::isinstance(value, insts.Arg))
+        {
+            auto index = value.attr("index").cast<std::size_t>();
+            return builder.create<plier::ArgOp>(builder.getUnknownLoc(), index, name.cast<std::string>());
+        }
+        if(py::isinstance(value, insts.Expr))
+        {
+            return lower_expr(value);
+        }
+        if (py::isinstance(value, insts.Const))
+        {
+            auto val = get_const_val(value.attr("value"));
+            return builder.create<plier::ConstOp>(builder.getUnknownLoc(), val);
+        }
+
+        report_error(llvm::Twine("lower_assign not handled: \"") + py::str(value.get_type()).cast<std::string>() + "\"");
+    }
+
+    mlir::Value lower_expr(const py::handle& expr)
+    {
+        auto op = expr.attr("op").cast<std::string>();
+        if (op == "binop")
+        {
+            return lower_binop(expr, expr.attr("fn"));
+        }
+        if (op == "cast")
+        {
+            auto val = loadvar(expr.attr("value").attr("name"));
+            return builder.create<plier::CastOp>(builder.getUnknownLoc(), val);
+        }
+//        if (op == "call")
+//        {
+//            return lower_call(expr);
+//        }
+        report_error(llvm::Twine("lower_expr not handled: \"") + op + "\"");
+    }
+
+    mlir::Value lower_binop(const py::handle& expr, const py::handle& op)
+    {
+        auto lhs_name = expr.attr("lhs").attr("name");
+        auto rhs_name = expr.attr("rhs").attr("name");
+        auto lhs = loadvar(lhs_name);
+        auto rhs = loadvar(rhs_name);
+//        return resolve_op(lhs, rhs, op);
+    }
+
+    void storevar(mlir::Value val, const py::handle& inst, const py::handle& name)
+    {
+        auto name_str = name.cast<std::string>();
+        vars[name_str] = val;
+    }
+
+    mlir::Value loadvar(const py::handle& name)
+    {
+        auto it = vars.find(name.cast<std::string>());
+        assert(vars.end() != it);
+        return it->second;
+    }
+
+    void delvar(const py::handle& name)
+    {
+        auto var = loadvar(name);
+        builder.create<plier::DelOp>(builder.getUnknownLoc(), var);
+        vars.erase(name.cast<std::string>());
+    }
+
+    void retvar(const py::handle& name)
+    {
+        auto var = loadvar(name);
+        builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
+    }
+
+    mlir::Attribute get_const_val(const py::handle& val)
+    {
+        if (py::isinstance<py::int_>(val))
+        {
+            return builder.getI64IntegerAttr(val.cast<int64_t>());
+        }
+        report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
+    }
+
+    mlir::FunctionType get_func_type(const py::handle& typedesc)
+    {
+        auto get_type = [&](const auto& h) {
+//            return parse_type(py::str(h).cast<std::string>());
+            return plier::PyType::get(&ctx);
+        };
+        auto p_func = typedesc();
+        auto ret = get_type(p_func.attr("restype"));
+        llvm::SmallVector<mlir::Type, 8> args;
+//        for (auto arg : p_func.attr("argtypes"))
+//        {
+//            args.push_back(get_type(arg));
+//        }
+        return mlir::FunctionType::get(args, {ret}, &ctx);
+    }
+};
 }
 
 py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
 {
     mlir::registerDialect<mllvm::LLVMDialect>();
+    plier::register_dialect();
+    plier_lowerer().lower(compilation_context, func_ir);
     return lowerer().lower(compilation_context, func_ir);
 }

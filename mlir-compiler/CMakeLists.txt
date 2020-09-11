@@ -20,6 +20,7 @@ include(HandleLLVMOptions)
 add_subdirectory(include/plier)
 
 set(SOURCES_LIST
+    dialect.cpp
     lowering.cpp
     module.cpp
     type_parser.cpp

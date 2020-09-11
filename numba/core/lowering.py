@@ -187,6 +187,7 @@ class BaseLower(object):
         """
         if _use_mlir:
             ctx = {}
+            ctx['fndesc'] = lambda: fndesc
             ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
             ctx['fnname'] = lambda: fndesc.mangled_name
             ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
