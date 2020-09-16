@@ -585,7 +585,7 @@ private:
     void lower_block(mlir::Block* bb, const py::handle& ir_block)
     {
         assert(nullptr != bb);
-        vars.clear();
+//        vars.clear();
         builder.setInsertionPointToEnd(bb);
         for (auto it : get_body(ir_block))
         {
@@ -609,10 +609,10 @@ private:
         {
             retvar(inst.attr("value").attr("name"));
         }
-//        else if (py::isinstance(inst, insts.Branch))
-//        {
-//            branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
-//        }
+        else if (py::isinstance(inst, insts.Branch))
+        {
+            branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
+        }
 //        else if (py::isinstance(inst, insts.Jump))
 //        {
 //            jump(inst.attr("target"));
@@ -629,7 +629,8 @@ private:
         if (py::isinstance(value, insts.Arg))
         {
             auto index = value.attr("index").cast<std::size_t>();
-            return builder.create<plier::ArgOp>(builder.getUnknownLoc(), index, name.cast<std::string>());
+            return builder.create<plier::ArgOp>(builder.getUnknownLoc(), index,
+                                                name.cast<std::string>());
         }
         if(py::isinstance(value, insts.Expr))
         {
@@ -639,6 +640,12 @@ private:
         {
             auto val = get_const_val(value.attr("value"));
             return builder.create<plier::ConstOp>(builder.getUnknownLoc(), val);
+        }
+        if (py::isinstance(value, insts.Global))
+        {
+            auto name = value.attr("name").cast<std::string>();
+            return builder.create<plier::GlobalOp>(builder.getUnknownLoc(),
+                                                   name);
         }
 
         report_error(llvm::Twine("lower_assign not handled: \"") + py::str(value.get_type()).cast<std::string>() + "\"");
@@ -656,11 +663,39 @@ private:
             auto val = loadvar(expr.attr("value").attr("name"));
             return builder.create<plier::CastOp>(builder.getUnknownLoc(), val);
         }
-//        if (op == "call")
-//        {
-//            return lower_call(expr);
-//        }
+        if (op == "call")
+        {
+            return lower_call(expr);
+        }
         report_error(llvm::Twine("lower_expr not handled: \"") + op + "\"");
+    }
+
+    mlir::Value lower_call(const py::handle& expr)
+    {
+        auto func = loadvar(expr.attr("func").attr("name"));
+        auto args = expr.attr("args").cast<py::list>();
+        auto kws = expr.attr("kws").cast<py::list>();
+        auto vararg = expr.attr("vararg");
+//        std::cout << py::str(args).cast<std::string>() << std::endl;
+//        std::cout << py::str(kws).cast<std::string>() << std::endl;
+//        std::cout << py::str(vararg).cast<std::string>() << std::endl;
+
+        mlir::SmallVector<mlir::Value, 8> args_list;
+        mlir::SmallVector<std::pair<std::string, mlir::Value>, 8> kwargs_list;
+        for (auto a : args)
+        {
+            args_list.push_back(loadvar(a.attr("name")));
+        }
+        for (auto a : kws)
+        {
+            auto item = a.cast<py::tuple>();
+            auto name = item[0];
+            auto val_name = item[1].attr("name");
+            kwargs_list.push_back({name.cast<std::string>(), loadvar(val_name)});
+        }
+
+        return builder.create<plier::PyCallOp>(builder.getUnknownLoc(), func,
+                                               args_list, kwargs_list);
     }
 
     mlir::Value lower_binop(const py::handle& expr, const py::handle& op)
@@ -669,7 +704,30 @@ private:
         auto rhs_name = expr.attr("rhs").attr("name");
         auto lhs = loadvar(lhs_name);
         auto rhs = loadvar(rhs_name);
-//        return resolve_op(lhs, rhs, op);
+        return resolve_op(lhs, rhs, op);
+    }
+
+    mlir::Value resolve_op(mlir::Value lhs, mlir::Value rhs, const py::handle& op)
+    {
+        // TODO unhardcode
+        if (op.is(insts.add))
+        {
+            return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, "+");
+        }
+//        if (op.is(insts.eq))
+//        {
+//            assert(lhs.getType() == rhs.getType());
+//            if (lhs.getType().cast<mllvm::LLVMType>().isIntegerTy())
+//            {
+//                return builder.create<mllvm::ICmpOp>(builder.getUnknownLoc(), mllvm::ICmpPredicate::eq, lhs, rhs);
+//            }
+//        }
+        if (op.is(insts.gt))
+        {
+            return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, ">");
+        }
+
+        report_error(llvm::Twine("resolve_op not handled: \"") + py::str(op).cast<std::string>() + "\"");
     }
 
     void storevar(mlir::Value val, const py::handle& inst, const py::handle& name)
@@ -689,13 +747,21 @@ private:
     {
         auto var = loadvar(name);
         builder.create<plier::DelOp>(builder.getUnknownLoc(), var);
-        vars.erase(name.cast<std::string>());
+//        vars.erase(name.cast<std::string>());
     }
 
     void retvar(const py::handle& name)
     {
         auto var = loadvar(name);
         builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
+    }
+
+    void branch(const py::handle& cond, const py::handle& tr, const py::handle& fl)
+    {
+        auto c = loadvar(cond);
+        auto tr_block = blocks_map.find(tr.cast<int>())->second;
+        auto fl_block = blocks_map.find(fl.cast<int>())->second;
+        builder.create<mllvm::CondBrOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
     }
 
     mlir::Attribute get_const_val(const py::handle& val)

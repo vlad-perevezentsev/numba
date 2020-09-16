@@ -40,6 +40,30 @@ def ConstOp : Plier_Op<"const", []> {
     ];
 }
 
+def GlobalOp : Plier_Op<"global", []> {
+  let arguments = (ins
+                   StrAttr:$name);
+
+  let results = (outs Plier_PyType);
+
+  let builders = [
+      OpBuilder<"OpBuilder &b, OperationState &state, StringRef name">
+  ];
+}
+
+def BinOp : Plier_Op<"binop", []> {
+  let arguments = (ins
+                   Plier_PyType:$rhs,
+                   Plier_PyType:$lhs,
+                   StrAttr:$op);
+
+  let results = (outs Plier_PyType);
+
+  let builders = [
+      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value rhs, ::mlir::Value lhs, StringRef op">
+  ];
+}
+
 def CastOp : Plier_Op<"cast", []> {
     let arguments = (ins
                      Plier_PyType:$value);
@@ -51,6 +75,21 @@ def CastOp : Plier_Op<"cast", []> {
     ];
 }
 
+def PyCallOp : Plier_Op<"call", []> {
+  let arguments = (ins
+                   Plier_PyType:$func,
+                   Variadic<AnyType>:$args,
+                   UI32Attr:$kw_start,
+                   ArrayAttr:$kw_names);
+
+  let results = (outs Plier_PyType);
+
+  let builders = [
+      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value func, "
+                "::mlir::ValueRange args, "
+                "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>> kwargs">
+  ];
+}
 
 def DelOp : Plier_Op<"del", []> {
     let arguments = (ins
