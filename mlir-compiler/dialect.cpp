@@ -66,6 +66,11 @@ void CastOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
     CastOp::build(builder, state, PyType::get(state.getContext()), val);
 }
 
+void AssignOp::build(OpBuilder &builder, OperationState &state,
+                     mlir::Value value, StringRef name) {
+    AssignOp::build(builder, state, PyType::get(state.getContext()), value, name);
+}
+
 void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func,
                      mlir::ValueRange args,
                      mlir::ArrayRef<std::pair<std::string, mlir::Value>> kwargs) {

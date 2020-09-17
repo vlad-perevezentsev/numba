@@ -613,10 +613,10 @@ private:
         {
             branch(inst.attr("cond").attr("name"), inst.attr("truebr"), inst.attr("falsebr"));
         }
-//        else if (py::isinstance(inst, insts.Jump))
-//        {
-//            jump(inst.attr("target"));
-//        }
+        else if (py::isinstance(inst, insts.Jump))
+        {
+            jump(inst.attr("target"));
+        }
         else
         {
             report_error(llvm::Twine("lower_inst not handled: \"") + py::str(inst.get_type()).cast<std::string>() + "\"");
@@ -635,6 +635,13 @@ private:
         if(py::isinstance(value, insts.Expr))
         {
             return lower_expr(value);
+        }
+        if(py::isinstance(value, insts.Var))
+        {
+            auto var = loadvar(value.attr("name"));
+            return builder.create<plier::AssignOp>(
+                builder.getUnknownLoc(), var,
+                value.attr("name").cast<std::string>());
         }
         if (py::isinstance(value, insts.Const))
         {
@@ -761,7 +768,13 @@ private:
         auto c = loadvar(cond);
         auto tr_block = blocks_map.find(tr.cast<int>())->second;
         auto fl_block = blocks_map.find(fl.cast<int>())->second;
-        builder.create<mllvm::CondBrOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
+        builder.create<mlir::CondBranchOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
+    }
+
+    void jump(const py::handle& target)
+    {
+        auto block = blocks_map.find(target.cast<int>())->second;
+        builder.create<mlir::BranchOp>(builder.getUnknownLoc(), mlir::None, block);
     }
 
     mlir::Attribute get_const_val(const py::handle& val)

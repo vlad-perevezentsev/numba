@@ -75,6 +75,18 @@ def CastOp : Plier_Op<"cast", []> {
     ];
 }
 
+def AssignOp : Plier_Op<"assign", []> {
+    let arguments = (ins
+                     Plier_PyType:$value,
+                     StrAttr:$name);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, StringRef name">
+    ];
+}
+
 def PyCallOp : Plier_Op<"call", []> {
   let arguments = (ins
                    Plier_PyType:$func,
