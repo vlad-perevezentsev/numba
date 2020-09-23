@@ -463,6 +463,25 @@ class NoPythonBackend(LoweringPass):
         )
         return True
 
+@register_pass(mutates_CFG=True, analysis_only=False)
+class MlirBackend(LoweringPass):
+
+    _name = "mlir_backend"
+
+    def __init__(self):
+        # LoweringPass.__init__(self)
+        pass
+
+    def run_pass(self, state):
+        ctx = {}
+        # ctx['fndesc'] = lambda: fndesc
+        # ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
+        # ctx['fnname'] = lambda: fndesc.mangled_name
+        # ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
+        import mlir_compiler
+        mlir_compiler.lower_normal_function(ctx, state.func_ir)
+        return True
+
 
 @register_pass(mutates_CFG=True, analysis_only=False)
 class InlineOverloads(FunctionPass):
