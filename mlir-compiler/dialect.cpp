@@ -99,6 +99,30 @@ void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
                            value, index_var, llvm::APInt(32, index));
 }
 
+void GetiterOp::build(OpBuilder &builder, OperationState &state,
+                            ::mlir::Value value)
+{
+    GetiterOp::build(builder, state, PyType::get(state.getContext()), value);
+}
+
+void IternextOp::build(OpBuilder &builder, OperationState &state,
+                            ::mlir::Value value)
+{
+    IternextOp::build(builder, state, PyType::get(state.getContext()), value);
+}
+
+void PairfirstOp::build(OpBuilder &builder, OperationState &state,
+                            ::mlir::Value value)
+{
+    PairfirstOp::build(builder, state, PyType::get(state.getContext()), value);
+}
+
+void PairsecondOp::build(OpBuilder &builder, OperationState &state,
+                            ::mlir::Value value)
+{
+    PairsecondOp::build(builder, state, PyType::get(state.getContext()), value);
+}
+
 
 #define GET_OP_CLASSES
 #include "plier/PlierOps.cpp.inc"

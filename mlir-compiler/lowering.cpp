@@ -682,8 +682,7 @@ private:
         }
         if (op == "cast")
         {
-            auto val = loadvar(expr.attr("value"));
-            return builder.create<plier::CastOp>(builder.getUnknownLoc(), val);
+            return lower_simple<plier::CastOp>(expr);
         }
         if (op == "call")
         {
@@ -701,7 +700,30 @@ private:
         {
             return lower_static_getitem(expr);
         }
+        if (op == "getiter")
+        {
+            return lower_simple<plier::GetiterOp>(expr);
+        }
+        if (op == "iternext")
+        {
+            return lower_simple<plier::IternextOp>(expr);
+        }
+        if (op == "pair_first")
+        {
+            return lower_simple<plier::PairfirstOp>(expr);
+        }
+        if (op == "pair_second")
+        {
+            return lower_simple<plier::PairsecondOp>(expr);
+        }
         report_error(llvm::Twine("lower_expr not handled: \"") + op + "\"");
+    }
+
+    template <typename T>
+    mlir::Value lower_simple(const py::handle& inst)
+    {
+        auto value = loadvar(inst.attr("value"));
+        return builder.create<T>(builder.getUnknownLoc(), value);
     }
 
     mlir::Value lower_static_getitem(const py::handle& inst)

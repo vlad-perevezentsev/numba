@@ -116,6 +116,50 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
 ];
 }
 
+def GetiterOp : Plier_Op<"getiter", []> {
+    let arguments = (ins
+                     Plier_PyType:$value);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+];
+}
+
+def IternextOp : Plier_Op<"iternext", []> {
+    let arguments = (ins
+                     Plier_PyType:$value);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+];
+}
+
+def PairfirstOp : Plier_Op<"pair_first", []> {
+    let arguments = (ins
+                     Plier_PyType:$value);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+];
+}
+
+def PairsecondOp : Plier_Op<"pair_second", []> {
+    let arguments = (ins
+                     Plier_PyType:$value);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+];
+}
+
 def DelOp : Plier_Op<"del", []> {
     let arguments = (ins
                      Plier_PyType:$value);
