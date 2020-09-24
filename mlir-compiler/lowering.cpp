@@ -693,7 +693,35 @@ private:
         {
             return lower_phi(expr);
         }
+        if (op == "build_tuple")
+        {
+            return lower_build_tuple(expr);
+        }
+        if (op == "static_getitem")
+        {
+            return lower_static_getitem(expr);
+        }
         report_error(llvm::Twine("lower_expr not handled: \"") + op + "\"");
+    }
+
+    mlir::Value lower_static_getitem(const py::handle& inst)
+    {
+        auto value = loadvar(inst.attr("value"));
+        auto index_var = loadvar(inst.attr("index_var"));
+        auto index = inst.attr("index").cast<unsigned>();
+        return builder.create<plier::StaticGetItemOp>(builder.getUnknownLoc(),
+                                                      value, index_var, index);
+    }
+
+    mlir::Value lower_build_tuple(const py::handle& inst)
+    {
+        auto items = inst.attr("items").cast<py::list>();
+        mlir::SmallVector<mlir::Value, 8> args;
+        for (auto item : items)
+        {
+            args.push_back(loadvar(item));
+        }
+        return builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args);
     }
 
     mlir::Value lower_phi(const py::handle& inst)

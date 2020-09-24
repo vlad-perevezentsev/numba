@@ -66,11 +66,6 @@ void CastOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
     CastOp::build(builder, state, PyType::get(state.getContext()), val);
 }
 
-void AssignOp::build(OpBuilder &builder, OperationState &state,
-                     mlir::Value value, StringRef name) {
-    AssignOp::build(builder, state, PyType::get(state.getContext()), value, name);
-}
-
 void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func,
                      mlir::ValueRange args,
                      mlir::ArrayRef<std::pair<std::string, mlir::Value>> kwargs) {
@@ -89,6 +84,21 @@ void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func
     PyCallOp::build(builder, state, PyType::get(state.getContext()), func,
                     all_args, kw_start, mlir::ArrayAttr::get(kw_names, ctx));
 }
+
+void BuildTupleOp::build(OpBuilder &builder, OperationState &state,
+                         ::mlir::ValueRange args)
+{
+    BuildTupleOp::build(builder, state, PyType::get(state.getContext()), args);
+}
+
+void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
+                            ::mlir::Value value, ::mlir::Value index_var,
+                            unsigned int index)
+{
+    StaticGetItemOp::build(builder, state, PyType::get(state.getContext()),
+                           value, index_var, llvm::APInt(32, index));
+}
+
 
 #define GET_OP_CLASSES
 #include "plier/PlierOps.cpp.inc"

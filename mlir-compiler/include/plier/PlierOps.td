@@ -75,18 +75,6 @@ def CastOp : Plier_Op<"cast", []> {
     ];
 }
 
-def AssignOp : Plier_Op<"assign", []> {
-    let arguments = (ins
-                     Plier_PyType:$value,
-                     StrAttr:$name);
-
-    let results = (outs Plier_PyType);
-
-    let builders = [
-        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, StringRef name">
-    ];
-}
-
 def PyCallOp : Plier_Op<"call", []> {
   let arguments = (ins
                    Plier_PyType:$func,
@@ -101,6 +89,31 @@ def PyCallOp : Plier_Op<"call", []> {
                 "::mlir::ValueRange args, "
                 "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>> kwargs">
   ];
+}
+
+def BuildTupleOp : Plier_Op<"build_tuple", []> {
+    let arguments = (ins
+                     Variadic<AnyType>:$args);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::ValueRange args">
+];
+}
+
+def StaticGetItemOp : Plier_Op<"static_getitem", []> {
+    let arguments = (ins
+                     Plier_PyType:$value,
+                     Plier_PyType:$index_var,
+                     UI32Attr:$index);
+
+    let results = (outs Plier_PyType);
+
+    let builders = [
+     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, "
+               "::mlir::Value index_var, unsigned index">
+];
 }
 
 def DelOp : Plier_Op<"del", []> {
