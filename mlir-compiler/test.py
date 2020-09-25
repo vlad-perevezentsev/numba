@@ -39,7 +39,7 @@ def tuple(a,b,c):
 def loop(n):
     res = 0
     for i in range(n):
-        res += i
+        res = res + i
     return res
 
 
@@ -67,4 +67,4 @@ test(jump, (1,8))
 test(jump, (7,8))
 test(call, (1,2,3))
 test(tuple, (1,2,3))
-#test(loop, (8,))
+test(loop, (8,))
