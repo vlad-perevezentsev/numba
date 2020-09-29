@@ -553,6 +553,7 @@ class NdConstructor(CallableTemplate):
 
 @infer_global(np.empty_like)
 @infer_global(np.zeros_like)
+@infer_global(np.ones_like)
 class NdConstructorLike(CallableTemplate):
     """
     Typing template for np.empty_like(), .zeros_like(), .ones_like().
@@ -580,9 +581,6 @@ class NdConstructorLike(CallableTemplate):
         return typer
 
 
-infer_global(np.ones_like)(NdConstructorLike)
-
-
 @infer_global(np.full)
 class NdFull(CallableTemplate):
 
@@ -598,6 +596,7 @@ class NdFull(CallableTemplate):
                 return types.Array(dtype=nb_dtype, ndim=ndim, layout='C')
 
         return typer
+
 
 @infer_global(np.full_like)
 class NdFullLike(CallableTemplate):
