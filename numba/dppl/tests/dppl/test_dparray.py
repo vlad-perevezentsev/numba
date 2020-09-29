@@ -1,8 +1,11 @@
 from __future__ import print_function, division, absolute_import
 
 import numba
-import numba.dppl.dparray as np
+import numba.dppl.dparray as dparray
 import numpy
+import sys
+
+dparray.numba_register()  # HACK to get the timing right for now
 
 def p1(a):
     return a * 2.0 + 13
@@ -14,14 +17,14 @@ def f2(a):
     return a
 
 @numba.njit()
-def f3(a, b):
-    return a * np.ndarray(b.shape, b.dtype, b)
+def f3(a, b):  # a is dparray, b is numpy
+    return a * dparray.asarray(b)
 
 @numba.njit()
 def f4():
-    return np.ones(10)
+    return dparray.ones(10)
 
-def p5(a, b):
+def p5(a, b):  # a is dparray, b is numpy
     return a * b
 
 f5 = numba.njit(p5)
@@ -30,64 +33,134 @@ f5 = numba.njit(p5)
 def f6(a):
     return a + 13
 
-print("Testing Python Numpy")
+@numba.njit()
+def f7(a):  # a is dparray
+    # implicit conversion of a to numpy.ndarray
+    b = numpy.ones(10)
+    c = a * b
+    d = a.argsort()  # with no implicit conversion this fails
+
+@numba.njit
+def f8(a):
+    return dparray.as_ndarray(a)
+
+@numba.njit
+def f9(a):
+    return dparray.from_ndarray(a)
+
+print("------------------- Testing Python Numpy")
+sys.stdout.flush()
 z1 = numpy.ones(10)
 z2 = p1(z1)
 print("z2:", z2, type(z2))
-assert(isinstance(z2, numpy.ndarray))
+assert(type(z2) == numpy.ndarray)
 
-print("Testing Numba Numpy")
+print("------------------- Testing Numba Numpy")
+sys.stdout.flush()
 z1 = numpy.ones(10)
 z2 = f1(z1)
 print("z2:", z2, type(z2))
-assert(isinstance(z2, numpy.ndarray))
+assert(type(z2) == numpy.ndarray)
 
-print("Testing dparray ones")
-a = np.ones(10)
+print("------------------- Testing dparray ones")
+sys.stdout.flush()
+a = dparray.ones(10)
 print("a:", a, type(a))
-assert(isinstance(a, np.ndarray))
+assert(isinstance(a, dparray.ndarray))
 
-print("Testing dparray multiplication")
+print("------------------- Testing dparray.dparray.as_ndarray")
+sys.stdout.flush()
+nd1 = a.as_ndarray()
+print("nd1:", nd1, type(nd1))
+assert(type(nd1) == numpy.ndarray)
+
+print("------------------- Testing dparray.as_ndarray")
+sys.stdout.flush()
+nd2 = dparray.as_ndarray(a)
+print("nd2:", nd2, type(nd2))
+assert(type(nd2) == numpy.ndarray)
+
+print("------------------- Testing dparray.from_ndarray")
+sys.stdout.flush()
+dp1 = dparray.from_ndarray(nd2)
+print("dp1:", dp1, type(dp1))
+assert(isinstance(dp1, dparray.ndarray))
+
+print("------------------- Testing dparray multiplication")
+sys.stdout.flush()
 c = a * 5
 print("c", c, type(c))
-assert(isinstance(c, np.ndarray))
+assert(isinstance(c, dparray.ndarray))
 
-print("Testing Python dparray")
+print("------------------- Testing Python dparray")
+sys.stdout.flush()
 b = p1(c)
 print("b:", b, type(b))
-assert(isinstance(b, np.ndarray))
+assert(isinstance(b, dparray.ndarray))
+del b
 
-print("Testing Numba dparray")
-b = f1(c)
-print("b:", b, type(b))
-assert(isinstance(b, np.ndarray))
-
-print("Testing Numba dparray 2")
-d = f2(a)
-print("d:", d, type(d))
-assert(isinstance(b, np.ndarray))
-
-print("Testing Numba dparray constructor from numpy.ndarray")
-e = f3(a, z1)
-print("e:", e, type(e))
-assert(isinstance(e, np.ndarray))
-
-print("Testing Numba dparray functions")
-f = f4()
-print("f:", f, type(f))
-assert(isinstance(f, np.ndarray))
-
-print("Testing Python mixing dparray and numpy.ndarray")
+print("------------------- Testing Python mixing dparray and numpy.ndarray")
+sys.stdout.flush()
 h = p5(a, z1)
 print("h:", h, type(h))
-assert(isinstance(h, np.ndarray))
+assert(isinstance(h, dparray.ndarray))
+del h
 
-print("Testing Numba mixing dparray and numpy.ndarray")
-h = f5(a, z1)
-print("h:", h, type(h))
-assert(isinstance(h, np.ndarray))
+print("------------------- Testing Numba dparray 2")
+sys.stdout.flush()
+d = f2(a)
+print("d:", d, type(d))
+assert(isinstance(d, dparray.ndarray))
+del d
 
-print("Testing Numba mixing dparray and constant")
+print("------------------- Testing Numba dparray")
+sys.stdout.flush()
+b = f1(c)
+print("b:", b, type(b))
+assert(isinstance(b, dparray.ndarray))
+del b
+
+"""
+print("------------------- Testing Numba dparray constructor from numpy.ndarray")
+sys.stdout.flush()
+e = f3(a, z1)
+print("e:", e, type(e))
+assert(isinstance(e, dparray.ndarray))
+"""
+
+print("------------------- Testing Numba mixing dparray and constant")
+sys.stdout.flush()
 g = f6(a)
 print("g:", g, type(g))
-assert(isinstance(g, np.ndarray))
+assert(isinstance(g, dparray.ndarray))
+del g
+
+print("------------------- Testing Numba mixing dparray and numpy.ndarray")
+sys.stdout.flush()
+h = f5(a, z1)
+print("h:", h, type(h))
+assert(isinstance(h, dparray.ndarray))
+del h
+
+print("------------------- Testing Numba dparray functions")
+sys.stdout.flush()
+f = f4()
+print("f:", f, type(f))
+assert(isinstance(f, dparray.ndarray))
+
+print("------------------- Testing Numba dparray.as_ndarray")
+sys.stdout.flush()
+nd3 = f8(a)
+print("nd3:", nd3, type(nd3))
+assert(type(nd3) == numpy.ndarray)
+
+print("------------------- Testing Numba dparray.from_ndarray")
+sys.stdout.flush()
+dp2 = f9(nd3)
+print("dp2:", dp2, type(dp2))
+assert(isinstance(dp2, dparray.ndarray))
+
+#-------------------------------
+del a
+
+print("SUCCESS")
