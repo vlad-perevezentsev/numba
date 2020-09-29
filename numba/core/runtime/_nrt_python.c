@@ -108,6 +108,14 @@ MemInfo_get_refcount(MemInfoObject *self, void *closure) {
     return PyLong_FromSize_t(refct);
 }
 
+static
+PyObject*
+MemInfo_get_external_allocator(MemInfoObject *self, void *closure) {
+    void *p = NRT_MemInfo_external_allocator(self->meminfo);
+    printf("MemInfo_get_external_allocator %p\n", p);
+    return PyLong_FromVoidPtr(p);
+}
+
 static void
 MemInfo_dealloc(MemInfoObject *self)
 {
@@ -134,6 +142,10 @@ static PyGetSetDef MemInfo_getsets[] = {
     {"refcount",
      (getter)MemInfo_get_refcount, NULL,
      "Get the refcount",
+     NULL},
+    {"external_allocator",
+     (getter)MemInfo_get_external_allocator, NULL,
+     "Get the external allocator",
      NULL},
     {NULL}  /* Sentinel */
 };

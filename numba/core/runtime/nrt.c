@@ -180,6 +180,7 @@ void NRT_MemInfo_init(NRT_MemInfo *mi,void *data, size_t size,
     mi->data = data;
     mi->size = size;
     mi->external_allocator = external_allocator;
+    NRT_Debug(nrt_debug_print("NRT_MemInfo_init %p\n", external_allocator));
     /* Update stats */
     TheMSys.atomic_inc(&TheMSys.stats_mi_alloc);
 }
@@ -187,7 +188,7 @@ void NRT_MemInfo_init(NRT_MemInfo *mi,void *data, size_t size,
 NRT_MemInfo *NRT_MemInfo_new(void *data, size_t size,
                              NRT_dtor_function dtor, void *dtor_info)
 {
-    NRT_MemInfo *mi = NRT_Allocate(sizeof(NRT_MemInfo), NULL);
+    NRT_MemInfo *mi = NRT_Allocate(sizeof(NRT_MemInfo));
     NRT_MemInfo_init(mi, data, size, dtor, dtor_info, NULL);
     return mi;
 }
@@ -211,7 +212,8 @@ void nrt_internal_dtor_safe(void *ptr, size_t size, void *info) {
 static
 void *nrt_allocate_meminfo_and_data(size_t size, NRT_MemInfo **mi_out, NRT_ExternalAllocator *allocator) {
     NRT_MemInfo *mi;
-    char *base = NRT_Allocate(sizeof(NRT_MemInfo) + size, allocator);
+    NRT_Debug(nrt_debug_print("nrt_allocate_meminfo_and_data %p\n", allocator));
+    char *base = NRT_Allocate_External(sizeof(NRT_MemInfo) + size, allocator);
     mi = (NRT_MemInfo *) base;
     *mi_out = mi;
     return base + sizeof(NRT_MemInfo);
@@ -268,6 +270,7 @@ void *nrt_allocate_meminfo_and_data_align(size_t size, unsigned align,
                                           NRT_MemInfo **mi, NRT_ExternalAllocator *allocator)
 {
     size_t offset, intptr, remainder;
+    NRT_Debug(nrt_debug_print("nrt_allocate_meminfo_and_data_align %p\n", allocator));
     char *base = nrt_allocate_meminfo_and_data(size + 2 * align, mi, allocator);
     intptr = (size_t) base;
     /* See if we are aligned */
@@ -302,7 +305,8 @@ NRT_MemInfo *NRT_MemInfo_alloc_safe_aligned(size_t size, unsigned align) {
 
 NRT_MemInfo *NRT_MemInfo_alloc_safe_aligned_external(size_t size, unsigned align, NRT_ExternalAllocator *allocator) {
     NRT_MemInfo *mi;
-    void *data = nrt_allocate_meminfo_and_data_align(size, align, &mi, NULL);
+    NRT_Debug(nrt_debug_print("NRT_MemInfo_alloc_safe_aligned_external %p\n", allocator));
+    void *data = nrt_allocate_meminfo_and_data_align(size, align, &mi, allocator);
     /* Only fill up a couple cachelines with debug markers, to minimize
        overhead. */
     memset(data, 0xCB, MIN(size, 256));
@@ -313,6 +317,7 @@ NRT_MemInfo *NRT_MemInfo_alloc_safe_aligned_external(size_t size, unsigned align
 }
 
 void NRT_dealloc(NRT_MemInfo *mi) {
+    NRT_Debug(nrt_debug_print("NRT_dealloc meminfo: %p external_allocator: %p\n", mi, mi->external_allocator));
     if (mi->external_allocator) {
         mi->external_allocator->free(mi, mi->external_allocator->opaque_data);
     } else {
@@ -359,6 +364,10 @@ size_t NRT_MemInfo_size(NRT_MemInfo* mi) {
     return mi->size;
 }
 
+void * NRT_MemInfo_external_allocator(NRT_MemInfo *mi) {
+    NRT_Debug(nrt_debug_print("NRT_MemInfo_external_allocator meminfo: %p external_allocator: %p\n", mi, mi->external_allocator));
+    return mi->external_allocator;
+}
 
 void NRT_MemInfo_dump(NRT_MemInfo *mi, FILE *out) {
     fprintf(out, "MemInfo %p refcount %zu\n", mi, mi->refct);
@@ -383,7 +392,7 @@ nrt_varsize_dtor(void *ptr, size_t size, void *info) {
 NRT_MemInfo *NRT_MemInfo_new_varsize(size_t size)
 {
     NRT_MemInfo *mi;
-    void *data = NRT_Allocate(size, NULL);
+    void *data = NRT_Allocate(size);
     if (data == NULL)
         return NULL;
 
@@ -408,7 +417,7 @@ void *NRT_MemInfo_varsize_alloc(NRT_MemInfo *mi, size_t size)
                         "with a non varsize-allocated meminfo");
         return NULL;  /* unreachable */
     }
-    mi->data = NRT_Allocate(size, NULL);
+    mi->data = NRT_Allocate(size);
     if (mi->data == NULL)
         return NULL;
     mi->size = size;
@@ -444,9 +453,14 @@ void NRT_MemInfo_varsize_free(NRT_MemInfo *mi, void *ptr)
  * Low-level allocation wrappers.
  */
 
-void* NRT_Allocate(size_t size, NRT_ExternalAllocator *allocator) {
+void* NRT_Allocate(size_t size) {
+    return NRT_Allocate_External(size, NULL);
+}
+
+void* NRT_Allocate_External(size_t size, NRT_ExternalAllocator *allocator) {
     void *ptr;
     if (allocator) {
+        NRT_Debug(nrt_debug_print("NRT_Allocate custom allocator %zu\n", size));
         ptr = allocator->malloc(size, allocator->opaque_data);
     } else {
         ptr = TheMSys.allocator.malloc(size);

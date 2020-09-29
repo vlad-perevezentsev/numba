@@ -15,7 +15,7 @@ All functions described here are threadsafe.
 /* Debugging facilities - enabled at compile-time */
 /* #undef NDEBUG */
 #if 0
-#   define NRT_Debug(X) X
+#   define NRT_Debug(X) {X; fflush(stdout); }
 #else
 #   define NRT_Debug(X) if (0) { X; }
 #endif
@@ -184,6 +184,12 @@ void* NRT_MemInfo_data(NRT_MemInfo* mi);
 VISIBILITY_HIDDEN
 size_t NRT_MemInfo_size(NRT_MemInfo* mi);
 
+/*
+ * Returns the external allocator
+ */
+VISIBILITY_HIDDEN
+void* NRT_MemInfo_external_allocator(NRT_MemInfo* mi);
+
 
 /*
  * NRT API for resizable buffers.
@@ -211,7 +217,8 @@ void NRT_MemInfo_dump(NRT_MemInfo *mi, FILE *out);
 /*
  * Allocate memory of `size` bytes.
  */
-VISIBILITY_HIDDEN void* NRT_Allocate(size_t size, NRT_ExternalAllocator *allocator);
+VISIBILITY_HIDDEN void* NRT_Allocate(size_t size);
+VISIBILITY_HIDDEN void* NRT_Allocate_External(size_t size, NRT_ExternalAllocator *allocator);
 
 /*
  * Deallocate memory pointed by `ptr`.
