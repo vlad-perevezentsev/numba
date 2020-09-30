@@ -392,7 +392,7 @@ nrt_varsize_dtor(void *ptr, size_t size, void *info) {
 NRT_MemInfo *NRT_MemInfo_new_varsize(size_t size)
 {
     NRT_MemInfo *mi;
-    void *data = NRT_Allocate(size, NULL);
+    void *data = NRT_Allocate(size);
     if (data == NULL)
         return NULL;
 
@@ -417,7 +417,7 @@ void *NRT_MemInfo_varsize_alloc(NRT_MemInfo *mi, size_t size)
                         "with a non varsize-allocated meminfo");
         return NULL;  /* unreachable */
     }
-    mi->data = NRT_Allocate(size, NULL);
+    mi->data = NRT_Allocate(size);
     if (mi->data == NULL)
         return NULL;
     mi->size = size;
