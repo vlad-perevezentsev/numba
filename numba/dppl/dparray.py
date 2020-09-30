@@ -38,8 +38,8 @@ sycl_mem_lib = find_library('DPPLSyclInterface')
 dprint("sycl_mem_lib:", sycl_mem_lib)
 llb.load_library_permanently(sycl_mem_lib)
 
-import dppl
-from dppl._memory import MemoryUSMShared
+import dpctl
+from dpctl._memory import MemoryUSMShared
 import numba.dppl._dppl_rt
 
 functions_list = [o[0] for o in getmembers(np) if isfunction(o[1]) or isbuiltin(o[1])]
@@ -126,7 +126,7 @@ class ndarray(np.ndarray):
       
         """
         # since dparray must have mkl_memory underlying it, a copy must be made
-        newbuf = dppl.Memory(nbytes=self.data.nbytes)
+        newbuf = dpctl.Memory(nbytes=self.data.nbytes)
         new_arr = np.ndarray.__new__(
             type(self),
             self.shape,
@@ -452,10 +452,11 @@ def numba_register_typing():
         if isinstance(val, type):
             todo_classes.append(ig)
 
-    for val, typ in todo_classes:
+    # This is actuallya no-op now.
+#    for val, typ in todo_classes:
 #        print("todo_classes:", val, type(val), typ, type(typ))
 #        assert len(typ.templates) == 1
-        dpval = eval(val.__name__)
+#        dpval = eval(val.__name__)
 
     for val, typ in todo:
         assert len(typ.templates) == 1
