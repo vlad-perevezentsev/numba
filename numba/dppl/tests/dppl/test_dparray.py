@@ -5,8 +5,6 @@ import numba.dppl.dparray as dparray
 import numpy
 import sys
 
-dparray.numba_register()  # HACK to get the timing right for now
-
 def p1(a):
     return a * 2.0 + 13
 

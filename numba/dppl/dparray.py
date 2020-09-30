@@ -373,10 +373,14 @@ def allocator_DPArray(context, builder, size, align):
         assert align.type == u32, "align must be a uint32"
     return builder.call(fn, [size, align, ext_allocator])
 
+registered = False
 
 def numba_register():
-    numba_register_typing()
-    numba_register_lower_builtin()
+    global registered
+    if not registered:
+        registered = True
+        numba_register_typing()
+        numba_register_lower_builtin()
 
 # Copy a function registered as a lowerer in Numba but change the
 # "np" import in Numba to point to dparray instead of NumPy.
@@ -423,7 +427,7 @@ def numba_register_lower_builtin():
     cur_mod = importlib.import_module(__name__)
     for impl, func, types in (todo+todo_builtin):
         dparray_func = eval(func.__name__)
-#        print("need to re-register lowerer for dparray", impl, func, types, dparray_func)
+        dprint("need to re-register lowerer for dparray", impl, func, types, dparray_func)
         new_impl = copy_func_for_dparray(impl, cur_mod)
 #        lower_registry.functions.append((impl, dparray_func, types))
         lower_registry.functions.append((new_impl, dparray_func, types))
@@ -463,6 +467,8 @@ def numba_register_typing():
         # template is the typing class to invoke generic() upon.
         template = typ.templates[0]
         dpval = eval(val.__name__)
+        dprint("need to re-register for dparray", val, typ, typ.typing_key)
+        """
         if debug:
             print("--------------------------------------------------------------")
             print("need to re-register for dparray", val, typ, typ.typing_key)
@@ -475,6 +481,7 @@ def numba_register_typing():
             print("template:", template, type(template))
             print("dpval:", dpval, type(dpval))
             print("--------------------------------------------------------------")
+        """
 
         class_name = "DparrayTemplate_" + val.__name__
 
