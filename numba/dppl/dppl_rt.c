@@ -8,12 +8,29 @@ NRT_ExternalAllocator dparray_allocator;
 
 void dparray_memsys_init() {
     void *(*get_queue)();
-    void *sycldl = dlopen("libDPPLSyclInterface.so", RTLD_NOW);
+    char *lib_name = "libDPPLSyclInterface.so";
+    char *malloc_name = "DPPLmalloc_shared";
+    char *free_name = "DPPLfree_with_queue";
+    char *get_queue_name = "DPPLQueueMgr_GetCurrentQueue";
+
+    void *sycldl = dlopen(lib_name, RTLD_NOW);
     assert(sycldl != NULL);
-    dparray_allocator.malloc = (NRT_external_malloc_func)dlsym(sycldl, "DPPLmalloc_shared");
+    dparray_allocator.malloc = (NRT_external_malloc_func)dlsym(sycldl, malloc_name);
+    if (dparray_allocator.malloc == NULL) {
+        printf("Did not find %s in %s\n", malloc_name, lib_name);
+        exit(-1);
+    }
     dparray_allocator.realloc = NULL;
-    dparray_allocator.free = (NRT_external_free_func)dlsym(sycldl, "DPPLfree");
-    get_queue = (void *(*))dlsym(sycldl, "DPPLGetCurrentQueue");
+    dparray_allocator.free = (NRT_external_free_func)dlsym(sycldl, free_name);
+    if (dparray_allocator.free == NULL) {
+        printf("Did not find %s in %s\n", free_name, lib_name);
+        exit(-1);
+    }
+    get_queue = (void *(*))dlsym(sycldl, get_queue_name);
+    if (get_queue == NULL) {
+        printf("Did not find %s in %s\n", get_queue_name, lib_name);
+        exit(-1);
+    }
     dparray_allocator.opaque_data = get_queue();
 //    printf("dparray_memsys_init: %p %p %p\n", dparray_allocator.malloc, dparray_allocator.free, dparray_allocator.opaque_data);
 }
