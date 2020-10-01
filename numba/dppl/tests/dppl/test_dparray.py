@@ -46,6 +46,10 @@ def f8(a):
 def f9(a):
     return dparray.from_ndarray(a)
 
+@numba.njit
+def f10():
+    return dparray.empty((10,10))
+
 print("------------------- Testing Python Numpy")
 sys.stdout.flush()
 z1 = numpy.ones(10)
@@ -65,6 +69,7 @@ sys.stdout.flush()
 a = dparray.ones(10)
 print("a:", a, type(a))
 assert(isinstance(a, dparray.ndarray))
+assert(dparray.has_array_interface(a))
 
 print("------------------- Testing dparray.dparray.as_ndarray")
 sys.stdout.flush()
@@ -83,18 +88,21 @@ sys.stdout.flush()
 dp1 = dparray.from_ndarray(nd2)
 print("dp1:", dp1, type(dp1))
 assert(isinstance(dp1, dparray.ndarray))
+assert(dparray.has_array_interface(dp1))
 
 print("------------------- Testing dparray multiplication")
 sys.stdout.flush()
 c = a * 5
 print("c", c, type(c))
 assert(isinstance(c, dparray.ndarray))
+assert(dparray.has_array_interface(c))
 
 print("------------------- Testing Python dparray")
 sys.stdout.flush()
 b = p1(c)
 print("b:", b, type(b))
 assert(isinstance(b, dparray.ndarray))
+assert(dparray.has_array_interface(b))
 del b
 
 print("------------------- Testing Python mixing dparray and numpy.ndarray")
@@ -102,6 +110,7 @@ sys.stdout.flush()
 h = p5(a, z1)
 print("h:", h, type(h))
 assert(isinstance(h, dparray.ndarray))
+assert(dparray.has_array_interface(h))
 del h
 
 print("------------------- Testing Numba dparray 2")
@@ -109,6 +118,7 @@ sys.stdout.flush()
 d = f2(a)
 print("d:", d, type(d))
 assert(isinstance(d, dparray.ndarray))
+assert(dparray.has_array_interface(d))
 del d
 
 print("------------------- Testing Numba dparray")
@@ -116,6 +126,7 @@ sys.stdout.flush()
 b = f1(c)
 print("b:", b, type(b))
 assert(isinstance(b, dparray.ndarray))
+assert(dparray.has_array_interface(b))
 del b
 
 """
@@ -131,6 +142,7 @@ sys.stdout.flush()
 g = f6(a)
 print("g:", g, type(g))
 assert(isinstance(g, dparray.ndarray))
+assert(dparray.has_array_interface(g))
 del g
 
 print("------------------- Testing Numba mixing dparray and numpy.ndarray")
@@ -138,6 +150,7 @@ sys.stdout.flush()
 h = f5(a, z1)
 print("h:", h, type(h))
 assert(isinstance(h, dparray.ndarray))
+assert(dparray.has_array_interface(h))
 del h
 
 print("------------------- Testing Numba dparray functions")
@@ -145,6 +158,7 @@ sys.stdout.flush()
 f = f4()
 print("f:", f, type(f))
 assert(isinstance(f, dparray.ndarray))
+assert(dparray.has_array_interface(f))
 
 print("------------------- Testing Numba dparray.as_ndarray")
 sys.stdout.flush()
@@ -157,6 +171,14 @@ sys.stdout.flush()
 dp2 = f9(nd3)
 print("dp2:", dp2, type(dp2))
 assert(isinstance(dp2, dparray.ndarray))
+assert(dparray.has_array_interface(dp2))
+
+print("------------------- Testing Numba dparray.empty")
+sys.stdout.flush()
+dp3 = f10()
+print("dp3:", dp3, type(dp3))
+assert(isinstance(dp3, dparray.ndarray))
+assert(dparray.has_array_interface(dp3))
 
 #-------------------------------
 del a

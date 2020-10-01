@@ -48,6 +48,10 @@ class_list = [o for o in getmembers(np) if isclass(o[1])]
 for py_name, c_address in numba.dppl._dppl_rt.c_helpers.items():
     llb.add_symbol(py_name, c_address)
 
+array_interface_property = "__array_interface__"
+def has_array_interface(x):
+    return hasattr(x, array_interface_property)
+
 class ndarray(np.ndarray):
     """
     numpy.ndarray subclass whose underlying memory buffer is allocated
@@ -63,18 +67,30 @@ class ndarray(np.ndarray):
             dt = np.dtype(dtype)
             isz = dt.itemsize
             buf = MemoryUSMShared(nbytes=isz*max(1,nelems))
-            return np.ndarray.__new__(
+            new_obj = np.ndarray.__new__(
                 subtype, shape, dtype=dt,
                 buffer=buf, offset=0,
                 strides=strides, order=order)
+            if hasattr(new_obj, array_interface_property):
+                dprint("buffer None new_obj already has sycl_usm")
+            else:
+                dprint("buffer None new_obj will add sycl_usm")
+                new_obj.__sycl_usm_array_interface__ = {}
+            return new_obj
         # zero copy if buffer is a usm backed array-like thing
-        elif hasattr(buffer, '__sycl_usm_array_interface__'):
-            dprint("dparray::ndarray __new__ buffer __sycl_usm_array_interface__")
+        elif hasattr(buffer, array_interface_property):
+            dprint("dparray::ndarray __new__ buffer", array_interface_property)
             # also check for array interface
-            return np.ndarray.__new__(
-                subtype, shape, dtype=dt,
+            new_obj = np.ndarray.__new__(
+                subtype, shape, dtype=dtype,
                 buffer=buffer, offset=offset,
                 strides=strides, order=order)
+            if hasattr(new_obj, array_interface_property):
+                dprint("buffer None new_obj already has sycl_usm")
+            else:
+                dprint("buffer None new_obj will add sycl_usm")
+                new_obj.__sycl_usm_array_interface__ = {}
+            return new_obj
         else:
             dprint("dparray::ndarray __new__ buffer not None and not sycl_usm")
             nelems = np.prod(shape)
@@ -84,12 +100,17 @@ class ndarray(np.ndarray):
                             offset=offset, strides=strides,
                             order=order)
             buf = MemoryUSMShared(nbytes=ar.nbytes)
-            res = np.ndarray.__new__(
+            new_obj = np.ndarray.__new__(
                 subtype, shape, dtype=dtype,
                 buffer=buf, offset=0,
                 strides=strides, order=order)
-            np.copyto(res, ar, casting='no')
-            return res
+            np.copyto(new_obj, ar, casting='no')
+            if hasattr(new_obj, array_interface_property):
+                dprint("buffer None new_obj already has sycl_usm")
+            else:
+                dprint("buffer None new_obj will add sycl_usm")
+                new_obj.__sycl_usm_array_interface__ = {}
+            return new_obj
 
     def __array_finalize__(self, obj):
         dprint("__array_finalize__:", obj, type(obj))
@@ -101,7 +122,7 @@ class ndarray(np.ndarray):
         # subclass, that we might use to update the new `self` instance.
         # However, when called from view casting, `obj` can be an instance of any
         # subclass of ndarray, including our own.
-        if hasattr(obj, '__sycl_usm_array_interface__'):
+        if hasattr(obj, array_interface_property):
             return
         if isinstance(obj, numba.core.runtime._nrt_python._MemInfo):
             dprint("array_finalize got Numba MemInfo")
@@ -116,7 +137,7 @@ class ndarray(np.ndarray):
         if isinstance(obj, np.ndarray):
             ob = self
             while isinstance(ob, np.ndarray):
-                if hasattr(obj, '__sycl_usm_array_interface__'):
+                if hasattr(obj, array_interface_property):
                     return
                 ob = ob.base
     
@@ -342,6 +363,7 @@ def box_array(typ, val, c):
         dtypeptr = c.env_manager.read_const(c.env_manager.add_const(np_dtype))
         # Steals NRT ref
         newary = c.pyapi.nrt_adapt_ndarray_to_python(typ, val, dtypeptr)
+        print("box_array:", c, type(c), c.pyapi, type(c.pyapi))
         return newary
     else:
         parent = nativeary.parent
