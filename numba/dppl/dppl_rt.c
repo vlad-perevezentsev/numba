@@ -6,8 +6,8 @@
 
 NRT_ExternalAllocator dparray_allocator;
 
-void dparray_memsys_init() {
-    void *(*get_queue)();
+void dparray_memsys_init(void) {
+    void *(*get_queue)(void);
     char *lib_name = "libDPPLSyclInterface.so";
     char *malloc_name = "DPPLmalloc_shared";
     char *free_name = "DPPLfree_with_queue";
@@ -35,7 +35,7 @@ void dparray_memsys_init() {
 //    printf("dparray_memsys_init: %p %p %p\n", dparray_allocator.malloc, dparray_allocator.free, dparray_allocator.opaque_data);
 }
 
-void * dparray_get_ext_allocator() {
+void * dparray_get_ext_allocator(void) {
     printf("dparray_get_ext_allocator %p\n", &dparray_allocator);
     return (void*)&dparray_allocator;
 }

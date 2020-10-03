@@ -15,6 +15,7 @@ from numba.core import types, cgutils
 import builtins
 import sys
 from ctypes.util import find_library
+from numba.core.typing.templates import builtin_registry as templates_registry
 from numba.core.typing.npydecl import registry as typing_registry
 from numba.core.imputils import builtin_registry as lower_registry
 import importlib
@@ -113,7 +114,7 @@ class ndarray(np.ndarray):
             return new_obj
 
     def __array_finalize__(self, obj):
-        dprint("__array_finalize__:", obj, type(obj))
+        dprint("__array_finalize__:", obj, hex(id(obj)), type(obj))
 #        import pdb
 #        pdb.set_trace()
         # When called from the explicit constructor, obj is None
@@ -125,15 +126,21 @@ class ndarray(np.ndarray):
         if hasattr(obj, array_interface_property):
             return
         if isinstance(obj, numba.core.runtime._nrt_python._MemInfo):
-            dprint("array_finalize got Numba MemInfo")
-            ea = obj.external_allocator
-            d = obj.data
-            dprint("external_allocator:", ea, hex(ea), type(ea))
-            dprint("data:", d, hex(d), type(d))
-            dppl_rt_allocator = numba.dppl._dppl_rt.get_external_allocator()
-            dprint("dppl external_allocator:", dppl_rt_allocator, hex(dppl_rt_allocator), type(dppl_rt_allocator))
-            if ea == dppl_rt_allocator:
-                return
+            mobj = obj
+            while isinstance(mobj, numba.core.runtime._nrt_python._MemInfo):
+                dprint("array_finalize got Numba MemInfo")
+                ea = mobj.external_allocator
+                d = mobj.data
+                dprint("external_allocator:", hex(ea), type(ea))
+                dprint("data:", hex(d), type(d))
+                dppl_rt_allocator = numba.dppl._dppl_rt.get_external_allocator()
+                dprint("dppl external_allocator:", hex(dppl_rt_allocator), type(dppl_rt_allocator))
+                dprint(dir(mobj))
+                if ea == dppl_rt_allocator:
+                    return
+                mobj = mobj.parent
+                if isinstance(mobj, ndarray):
+                    mobj = mobj.base
         if isinstance(obj, np.ndarray):
             ob = self
             while isinstance(ob, np.ndarray):
@@ -363,7 +370,6 @@ def box_array(typ, val, c):
         dtypeptr = c.env_manager.read_const(c.env_manager.add_const(np_dtype))
         # Steals NRT ref
         newary = c.pyapi.nrt_adapt_ndarray_to_python(typ, val, dtypeptr)
-        print("box_array:", c, type(c), c.pyapi, type(c.pyapi))
         return newary
     else:
         parent = nativeary.parent
@@ -419,9 +425,13 @@ def copy_func_for_dparray(f, dparray_mod):
     g.__kwdefaults__ = f.__kwdefaults__
     return g
 
+def types_replace_array(x):
+    return tuple([z if z != types.Array else DPArrayType for z in x])
+
 def numba_register_lower_builtin():
     todo = []
     todo_builtin = []
+    todo_getattr = []
 
     # For all Numpy identifiers that have been registered for typing in Numba...
     # this registry contains functions, getattrs, setattrs, casts and constants...need to do them all? FIX FIX FIX
@@ -446,6 +456,16 @@ def numba_register_lower_builtin():
                     todo.append(ig)
 #                    print("todo_builtin added:", func.__name__)
 
+    for lg in lower_registry.getattrs:
+        func, attr, types = lg
+        types_with_dparray = types_replace_array(types)
+        if DPArrayType in types_with_dparray:
+            dprint("lower_getattr:", func, type(func), attr, type(attr), types, type(types))
+            todo_getattr.append((func, attr, types_with_dparray))
+
+    for lg in todo_getattr:
+        lower_registry.getattrs.append(lg)
+
     cur_mod = importlib.import_module(__name__)
     for impl, func, types in (todo+todo_builtin):
         dparray_func = eval(func.__name__)
@@ -464,6 +484,7 @@ def argspec_to_string(argspec):
 def numba_register_typing():
     todo = []
     todo_classes = []
+    todo_getattr = []
 
     # For all Numpy identifiers that have been registered for typing in Numba...
     for ig in typing_registry.globals:
@@ -477,6 +498,10 @@ def numba_register_typing():
                 todo.append(ig)
         if isinstance(val, type):
             todo_classes.append(ig)
+
+    for tgetattr in templates_registry.attributes:
+        if tgetattr.key == types.Array:
+            todo_getattr.append(tgetattr)
 
     # This is actuallya no-op now.
 #    for val, typ in todo_classes:
@@ -556,14 +581,42 @@ def numba_register_typing():
             return exec_res
 
         new_dparray_template = type(class_name, (template,), {
-            "set_class_vars":set_key_original,
-            "generic":generic_impl})
+            "set_class_vars" : set_key_original,
+            "generic" : generic_impl})
 
         new_dparray_template.set_class_vars(dpval, template)
 
         assert(callable(dpval))
         type_handler = types.Function(new_dparray_template)
         typing_registry.register_global(dpval, type_handler)
+
+    # Handle dparray attribute typing.
+    for tgetattr in todo_getattr:
+        class_name = tgetattr.__name__ + "_dparray"
+        dprint("tgetattr:", tgetattr, type(tgetattr), class_name)
+
+        @classmethod
+        def set_key(cls, key):
+            cls.key = key
+
+        def getattr_impl(self, attr):
+            if attr.startswith('resolve_'):
+                #print("getattr_impl starts with resolve_:", self, type(self), attr)
+                def wrapper(*args, **kwargs):
+                    attr_res = tgetattr.__getattribute__(self, attr)(*args, **kwargs)
+                    if isinstance(attr_res, types.Array):
+                        return DPArrayType(dtype=attr_res.dtype, ndim=attr_res.ndim, layout=attr_res.layout)
+                return wrapper
+            else:
+                return tgetattr.__getattribute__(self, attr)
+
+        new_dparray_template = type(class_name, (tgetattr,), {
+            "set_class_vars" : set_key,
+            "__getattribute__" : getattr_impl})
+
+        new_dparray_template.set_class_vars(DPArrayType)
+        templates_registry.register_attr(new_dparray_template)
+
 
 def from_ndarray(x):
     return copy(x)

@@ -54,6 +54,8 @@ int MemInfo_init(MemInfoObject *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
     raw_ptr = PyLong_AsVoidPtr(raw_ptr_obj);
+    NRT_Debug(nrt_debug_print("MemInfo_init self=%p raw_ptr=%p\n", self, raw_ptr));
+
     if(PyErr_Occurred()) return -1;
     self->meminfo = (NRT_MemInfo *)raw_ptr;
     assert (NRT_MemInfo_refcount(self->meminfo) > 0 && "0 refcount");
@@ -116,6 +118,19 @@ MemInfo_get_external_allocator(MemInfoObject *self, void *closure) {
     return PyLong_FromVoidPtr(p);
 }
 
+static
+PyObject*
+MemInfo_get_parent(MemInfoObject *self, void *closure) {
+    void *p = NRT_MemInfo_parent(self->meminfo);
+    if (p) {
+        Py_INCREF(p);
+        return (PyObject*)p;
+    } else {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+}
+
 static void
 MemInfo_dealloc(MemInfoObject *self)
 {
@@ -146,6 +161,9 @@ static PyGetSetDef MemInfo_getsets[] = {
     {"external_allocator",
      (getter)MemInfo_get_external_allocator, NULL,
      "Get the external allocator",
+     NULL},
+    {"parent",
+     (getter)MemInfo_get_parent, NULL,
      NULL},
     {NULL}  /* Sentinel */
 };
@@ -329,10 +347,13 @@ NRT_adapt_ndarray_to_python(arystruct_t* arystruct, PyTypeObject *retty, int ndi
         args = PyTuple_New(1);
         /* SETITEM steals reference */
         PyTuple_SET_ITEM(args, 0, PyLong_FromVoidPtr(arystruct->meminfo));
+        NRT_Debug(nrt_debug_print("NRT_adapt_ndarray_to_python arystruct->meminfo=%p\n", arystruct->meminfo));
         /*  Note: MemInfo_init() does not incref.  This function steals the
          *        NRT reference.
          */
+        NRT_Debug(nrt_debug_print("NRT_adapt_ndarray_to_python created MemInfo=%p\n", miobj));
         if (MemInfo_init(miobj, args, NULL)) {
+            NRT_Debug(nrt_debug_print("MemInfo_init returned 0.\n"));
             return NULL;
         }
         Py_DECREF(args);

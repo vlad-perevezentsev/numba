@@ -180,7 +180,7 @@ void NRT_MemInfo_init(NRT_MemInfo *mi,void *data, size_t size,
     mi->data = data;
     mi->size = size;
     mi->external_allocator = external_allocator;
-    NRT_Debug(nrt_debug_print("NRT_MemInfo_init %p\n", external_allocator));
+    NRT_Debug(nrt_debug_print("NRT_MemInfo_init mi=%p external_allocator=%p\n", mi, external_allocator));
     /* Update stats */
     TheMSys.atomic_inc(&TheMSys.stats_mi_alloc);
 }
@@ -189,6 +189,7 @@ NRT_MemInfo *NRT_MemInfo_new(void *data, size_t size,
                              NRT_dtor_function dtor, void *dtor_info)
 {
     NRT_MemInfo *mi = NRT_Allocate(sizeof(NRT_MemInfo));
+    NRT_Debug(nrt_debug_print("NRT_MemInfo_new mi=%p\n", mi));
     NRT_MemInfo_init(mi, data, size, dtor, dtor_info, NULL);
     return mi;
 }
@@ -369,6 +370,10 @@ void * NRT_MemInfo_external_allocator(NRT_MemInfo *mi) {
     return mi->external_allocator;
 }
 
+void *NRT_MemInfo_parent(NRT_MemInfo *mi) {
+    return mi->dtor_info;
+}
+
 void NRT_MemInfo_dump(NRT_MemInfo *mi, FILE *out) {
     fprintf(out, "MemInfo %p refcount %zu\n", mi, mi->refct);
 }
@@ -460,12 +465,12 @@ void* NRT_Allocate(size_t size) {
 void* NRT_Allocate_External(size_t size, NRT_ExternalAllocator *allocator) {
     void *ptr;
     if (allocator) {
-        NRT_Debug(nrt_debug_print("NRT_Allocate custom allocator %zu\n", size));
         ptr = allocator->malloc(size, allocator->opaque_data);
+        NRT_Debug(nrt_debug_print("NRT_Allocate custom bytes=%zu ptr=%p\n", size, ptr));
     } else {
         ptr = TheMSys.allocator.malloc(size);
+        NRT_Debug(nrt_debug_print("NRT_Allocate bytes=%zu ptr=%p\n", size, ptr));
     }
-    NRT_Debug(nrt_debug_print("NRT_Allocate bytes=%zu ptr=%p\n", size, ptr));
     TheMSys.atomic_inc(&TheMSys.stats_alloc);
     return ptr;
 }

@@ -190,6 +190,12 @@ size_t NRT_MemInfo_size(NRT_MemInfo* mi);
 VISIBILITY_HIDDEN
 void* NRT_MemInfo_external_allocator(NRT_MemInfo* mi);
 
+/*
+ * Returns the parent MemInfo
+ */
+VISIBILITY_HIDDEN
+void* NRT_MemInfo_parent(NRT_MemInfo* mi);
+
 
 /*
  * NRT API for resizable buffers.
