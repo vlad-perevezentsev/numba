@@ -19,6 +19,11 @@ using namespace mlir; // TODO: remove
 namespace plier
 {
 
+namespace detail
+{
+struct PyTypeStorage;
+}
+
 void register_dialect();
 
 namespace types
@@ -30,14 +35,17 @@ enum Kind
 };
 }
 
-class PyType : public mlir::Type::TypeBase<PyType, mlir::Type, mlir::TypeStorage> {
+class PyType : public mlir::Type::TypeBase<plier::PyType, mlir::Type,
+                                           detail::PyTypeStorage>
+{
 public:
     using Base::Base;
+
     static bool kindof(unsigned kind) { return kind == types::PyType; }
-    static PyType get(mlir::MLIRContext *context)
-    {
-        return Base::get(context, types::PyType);
-    }
+
+    static PyType get(mlir::MLIRContext *context, mlir::StringRef name = {});
+
+    mlir::StringRef getName() const;
 };
 
 

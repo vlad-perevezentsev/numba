@@ -9,6 +9,30 @@
 namespace plier
 {
 
+namespace detail
+{
+struct PyTypeStorage : public mlir::TypeStorage
+{
+    using KeyTy = mlir::StringRef;
+
+    PyTypeStorage(mlir::StringRef name): name(name) {}
+
+    bool operator==(const KeyTy& key) const
+    {
+        return key == name;
+    }
+
+    static PyTypeStorage* construct(mlir::TypeStorageAllocator& allocator,
+                                    const KeyTy& key)
+    {
+        return new(allocator.allocate<PyTypeStorage>())
+            PyTypeStorage(allocator.copyInto(key));
+    }
+
+    mlir::StringRef name;
+};
+}
+
 void register_dialect()
 {
     mlir::registerDialect<mlir::StandardOpsDialect>();
@@ -32,11 +56,21 @@ mlir::Type PlierDialect::parseType(mlir::DialectAsmParser &parser) const {
 void PlierDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const {
     switch (type.getKind()) {
     case plier::types::PyType:
-        os << "PyType";
+        os << "PyType<" << type.cast<plier::PyType>().getName() << ">";
         return;
     default:
         llvm_unreachable("unexpected type kind");
     }
+}
+
+PyType PyType::get(MLIRContext* context, llvm::StringRef name)
+{
+    return Base::get(context, types::PyType, name);
+}
+
+llvm::StringRef PyType::getName() const
+{
+    return getImpl()->name;
 }
 
 void ArgOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
