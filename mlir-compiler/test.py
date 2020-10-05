@@ -1,5 +1,8 @@
 import numba
 
+_tests_total = 0
+_tests_passes = 0
+
 def ret(a):
     return a
 
@@ -44,6 +47,9 @@ def loop(n):
 
 
 def test(func, params):
+    global _tests_total
+    global _tests_passes
+    _tests_total += 1
     print('test', func.__name__, params, '... ', end='')
     result = func(*params)
     wrapped = numba.njit()(func)
@@ -52,6 +58,7 @@ def test(func, params):
         if (res != result):
             raise Exception(f'Invalid value "{res}", expected "{result}"')
         print('SUCCESS')
+        _tests_passes += 1
     except Exception as e:
         print(e)
         print('FAILED')
@@ -68,3 +75,5 @@ test(jump, (7,8))
 test(call, (1,2,3))
 test(tuple, (1,2,3))
 test(loop, (8,))
+
+print(f'Tests passed: {_tests_passes}/{_tests_total}')
