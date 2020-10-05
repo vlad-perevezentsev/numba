@@ -23,6 +23,7 @@ def ArgOp : Plier_Op<"arg", []> {
                      StrAttr:$name);
 
     let results = (outs Plier_PyType);
+    let hasFolder = 1;
 
     let builders = [
         OpBuilder<"OpBuilder &b, OperationState &state, unsigned index, StringRef name">
