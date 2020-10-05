@@ -24,12 +24,14 @@ set(SOURCES_LIST
     src/dialect.cpp
     src/lowering.cpp
     src/module.cpp
+    src/passes/plier_to_std.cpp
     src/type_parser.cpp
     src/utils.cpp
     )
 set(HEADERS_LIST
     src/compiler.hpp
     src/lowering.hpp
+    src/passes/plier_to_std.hpp
     src/type_parser.hpp
     src/utils.hpp
     include/plier/dialect.hpp
