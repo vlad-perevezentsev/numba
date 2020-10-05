@@ -1,10 +1,10 @@
 #pragma once
 
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/Function.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
+#include <mlir/IR/Dialect.h>
+#include <mlir/IR/Types.h>
+#include <mlir/IR/OpDefinition.h>
+#include <mlir/IR/Function.h>
+#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include "plier/PlierOpsEnums.h.inc"
 
