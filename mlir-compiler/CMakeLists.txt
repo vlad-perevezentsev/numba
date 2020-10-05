@@ -20,14 +20,14 @@ include(HandleLLVMOptions)
 add_subdirectory(include/plier)
 
 set(SOURCES_LIST
-    dialect.cpp
-    lowering.cpp
-    module.cpp
-    type_parser.cpp
+    src/dialect.cpp
+    src/lowering.cpp
+    src/module.cpp
+    src/type_parser.cpp
     )
 set(HEADERS_LIST
-    lowering.hpp
-    type_parser.hpp
+    src/lowering.hpp
+    src/type_parser.hpp
     include/plier/dialect.hpp
     include/plier/PlierOps.td
     )
