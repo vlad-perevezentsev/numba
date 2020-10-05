@@ -24,8 +24,6 @@ namespace detail
 struct PyTypeStorage;
 }
 
-void register_dialect();
-
 namespace types
 {
 enum Kind

@@ -33,12 +33,6 @@ struct PyTypeStorage : public mlir::TypeStorage
 };
 }
 
-void register_dialect()
-{
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<plier::PlierDialect>();
-}
-
 PlierDialect::PlierDialect(mlir::MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
     addOperations<
