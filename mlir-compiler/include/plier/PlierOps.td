@@ -54,8 +54,8 @@ def GlobalOp : Plier_Op<"global", []> {
 
 def BinOp : Plier_Op<"binop", []> {
   let arguments = (ins
-                   Plier_PyType:$rhs,
-                   Plier_PyType:$lhs,
+                   AnyType:$rhs,
+                   AnyType:$lhs,
                    StrAttr:$op);
 
   let results = (outs Plier_PyType);

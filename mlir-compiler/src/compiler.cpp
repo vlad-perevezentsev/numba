@@ -8,15 +8,18 @@
 
 #include "utils.hpp"
 
+#include "passes/plier_to_std.hpp"
+
 class CompilerContext::CompilerContextImpl
 {
 public:
     CompilerContextImpl(mlir::MLIRContext& ctx):
-        pm(&ctx)
+        pm(&ctx, /*verify*/false)
     {
-        pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-        auto& funcPm = pm.nest<mlir::FuncOp>();
-        // TODO
+        pm.addPass(mlir::createCanonicalizerPass());
+        pm.addPass(createPlierToStdPass());
+        pm.enableStatistics();
+        pm.enableTiming();
     }
 
     void run(mlir::ModuleOp& module)
