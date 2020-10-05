@@ -24,10 +24,12 @@ set(SOURCES_LIST
     src/lowering.cpp
     src/module.cpp
     src/type_parser.cpp
+    src/utils.cpp
     )
 set(HEADERS_LIST
     src/lowering.hpp
     src/type_parser.hpp
+    src/utils.hpp
     include/plier/dialect.hpp
     include/plier/PlierOps.td
     )

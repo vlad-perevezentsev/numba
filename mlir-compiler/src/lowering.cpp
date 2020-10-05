@@ -2,50 +2,33 @@
 
 #include <algorithm>
 #include <array>
-#include <stdexcept>
 #include <vector>
 #include <unordered_map>
 
 #include <pybind11/pybind11.h>
 
-#include <llvm/IR/Type.h>
-
 #include <mlir/IR/Module.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/StandardTypes.h>
 
-#include <mlir/Target/LLVMIR.h>
-
-#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
-
-#include "type_parser.hpp"
-
-#include <llvm/Bitcode/BitcodeWriter.h>
-
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include "plier/dialect.hpp"
 
-#include <iostream>
+#include "utils.hpp"
 
 namespace py = pybind11;
-namespace mllvm = mlir::LLVM;
 namespace
 {
-[[noreturn]] void report_error(const llvm::Twine& msg)
-{
-    auto str = msg.str();
-    throw std::exception(str.c_str());
-}
 
-std::string serialize_mod(const llvm::Module& mod)
-{
-    std::string ret;
-    llvm::raw_string_ostream stream(ret);
-//    mod.print(stream, nullptr);
-    llvm::WriteBitcodeToFile(mod, stream);
-    stream.flush();
-    return ret;
-}
+//std::string serialize_mod(const llvm::Module& mod)
+//{
+//    std::string ret;
+//    llvm::raw_string_ostream stream(ret);
+////    mod.print(stream, nullptr);
+//    llvm::WriteBitcodeToFile(mod, stream);
+//    stream.flush();
+//    return ret;
+//}
 
 template<typename T>
 std::string to_str(T& obj)
@@ -143,27 +126,27 @@ struct inst_handles
     py::handle gt;
 };
 
-struct type_cache
-{
-    using Type = mllvm::LLVMType;
+//struct type_cache
+//{
+//    using Type = mllvm::LLVMType;
 
-    Type get_type(mlir::MLIRContext& context, llvm::StringRef str)
-    {
-        assert(!str.empty());
-        auto s = str.str();
-        auto it = typemap.find(s);
-        if (typemap.end() != it)
-        {
-            return it->second;
-        }
-        auto type = parse_type(context, str);
-        typemap[s] = type;
-        return type;
-    }
+//    Type get_type(mlir::MLIRContext& context, llvm::StringRef str)
+//    {
+//        assert(!str.empty());
+//        auto s = str.str();
+//        auto it = typemap.find(s);
+//        if (typemap.end() != it)
+//        {
+//            return it->second;
+//        }
+//        auto type = parse_type(context, str);
+//        typemap[s] = type;
+//        return type;
+//    }
 
-private:
-    std::unordered_map<std::string, Type> typemap;
-};
+//private:
+//    std::unordered_map<std::string, Type> typemap;
+//};
 
 struct lowerer_base
 {
@@ -186,7 +169,7 @@ struct plier_lowerer : public lowerer_base
 
     }
 
-    py::bytes lower(const py::object& compilation_context, const py::object& func_ir)
+    mlir::ModuleOp lower(const py::object& compilation_context, const py::object& func_ir)
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         typemap = compilation_context["typemap"];
@@ -201,7 +184,7 @@ struct plier_lowerer : public lowerer_base
             report_error("MLIR module validation failed");
         }
 
-        return {};
+        return mod;
     }
 private:
     plier::PlierDialect& dialect;
@@ -583,5 +566,6 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
 {
     mlir::registerDialect<mlir::StandardOpsDialect>();
     mlir::registerDialect<plier::PlierDialect>();
-    return plier_lowerer().lower(compilation_context, func_ir);
+    auto mod = plier_lowerer().lower(compilation_context, func_ir);
+    return {};
 }
