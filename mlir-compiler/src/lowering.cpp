@@ -42,14 +42,6 @@ std::string to_str(T& obj)
     return ret;
 }
 
-template<typename T>
-T& get_dialect(mlir::MLIRContext& ctx)
-{
-    auto dialect = ctx.getOrLoadDialect<T>();
-    assert(nullptr != dialect);
-    return *dialect;
-}
-
 std::vector<std::pair<int, py::handle>> get_blocks(const py::object& func)
 {
     std::vector<std::pair<int, py::handle>> ret;
@@ -150,24 +142,11 @@ struct inst_handles
 //    std::unordered_map<std::string, Type> typemap;
 //};
 
-struct lowerer_base
-{
-    lowerer_base(mlir::MLIRContext& context): ctx(context), builder(&ctx) {}
-
-protected:
-    mlir::MLIRContext& ctx;
-    mlir::OpBuilder builder;
-    mlir::Block::BlockArgListType fnargs;
-    std::vector<mlir::Block*> blocks;
-    std::unordered_map<int, mlir::Block*> blocks_map;
-    inst_handles insts;
-};
-
-struct plier_lowerer : public lowerer_base
+struct plier_lowerer
 {
     plier_lowerer(mlir::MLIRContext& context):
-        lowerer_base(context),
-        dialect(get_dialect<plier::PlierDialect>(ctx))
+        ctx(context),
+        builder(&ctx)
     {
         ctx.loadDialect<mlir::StandardOpsDialect>();
         ctx.loadDialect<plier::PlierDialect>();
@@ -185,7 +164,11 @@ struct plier_lowerer : public lowerer_base
         return mod;
     }
 private:
-    plier::PlierDialect& dialect;
+    mlir::MLIRContext& ctx;
+    mlir::OpBuilder builder;
+    std::vector<mlir::Block*> blocks;
+    std::unordered_map<int, mlir::Block*> blocks_map;
+    inst_handles insts;
     mlir::FuncOp func;
     std::unordered_map<std::string, mlir::Value> vars_map;
     struct BlockInfo
@@ -220,7 +203,6 @@ private:
             blocks.push_back(block);
             blocks_map[ir_blocks[i].first] = block;
         }
-        fnargs = func.getArguments();
 
         for (std::size_t i = 0; i < ir_blocks.size(); ++i)
         {
