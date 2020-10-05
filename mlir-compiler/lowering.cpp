@@ -540,6 +540,7 @@ struct plier_lowerer : public lowerer_base
     py::bytes lower(const py::object& compilation_context, const py::object& func_ir)
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
+        typemap = compilation_context["typemap"];
 //        auto name = compilation_context["fnname"]().cast<std::string>();
         auto name = "test";
         auto typ = get_func_type(/*compilation_context["fndesc"]*/nullptr);
@@ -558,6 +559,7 @@ struct plier_lowerer : public lowerer_base
 //        auto llvmmod = mlir::translateModuleToLLVMIR(mod);
 //        //        llvmmod->dump();
 //        return py::bytes(serialize_mod(*llvmmod));
+
         return {};
     }
 private:
@@ -574,6 +576,7 @@ private:
         };
         llvm::SmallVector<PhiDesc, 2> outgoing_phi_nodes;
     };
+    py::handle typemap;
 
     std::unordered_map<mlir::Block*, BlockInfo> block_infos;
 
@@ -833,6 +836,8 @@ private:
     void storevar(mlir::Value val, const py::handle& inst)
     {
         vars_map[inst.attr("name").cast<std::string>()] = val;
+        auto type = typemap(inst);
+        val.setType(plier::PyType::get(&ctx, py::str(type).cast<std::string>()));
     }
 
     mlir::Value loadvar(const py::handle& inst)
@@ -952,6 +957,7 @@ private:
             }
         }
     }
+
 };
 }
 

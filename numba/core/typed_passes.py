@@ -474,6 +474,7 @@ class MlirBackend(LoweringPass):
 
     def run_pass(self, state):
         ctx = {}
+        ctx['typemap'] = lambda op: state.typemap[op.name]
         # ctx['fndesc'] = lambda: fndesc
         # ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
         # ctx['fnname'] = lambda: fndesc.mangled_name
