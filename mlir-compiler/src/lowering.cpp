@@ -30,15 +30,15 @@ namespace
 //    return ret;
 //}
 
-template<typename T>
-std::string to_str(T& obj)
-{
-    std::string ret;
-    llvm::raw_string_ostream stream(ret);
-    obj.print(stream);
-    stream.flush();
-    return ret;
-}
+//template<typename T>
+//std::string to_str(T& obj)
+//{
+//    std::string ret;
+//    llvm::raw_string_ostream stream(ret);
+//    obj.print(stream);
+//    stream.flush();
+//    return ret;
+//}
 
 template<typename T>
 T& get_dialect(mlir::MLIRContext& ctx)
@@ -65,23 +65,23 @@ py::list get_body(const py::handle& block)
     return block.attr("body").cast<py::list>();
 }
 
-struct scoped_goto_block
-{
-    scoped_goto_block(mlir::OpBuilder& b, mlir::Block* new_block):
-        builder(b),
-        old_block(b.getBlock())
-    {
-        builder.setInsertionPointToEnd(new_block);
-    }
+//struct scoped_goto_block
+//{
+//    scoped_goto_block(mlir::OpBuilder& b, mlir::Block* new_block):
+//        builder(b),
+//        old_block(b.getBlock())
+//    {
+//        builder.setInsertionPointToEnd(new_block);
+//    }
 
-    ~scoped_goto_block()
-    {
-        builder.setInsertionPointToEnd(old_block);
-    }
+//    ~scoped_goto_block()
+//    {
+//        builder.setInsertionPointToEnd(old_block);
+//    }
 
-    mlir::OpBuilder& builder;
-    mlir::Block* old_block = nullptr;
-};
+//    mlir::OpBuilder& builder;
+//    mlir::Block* old_block = nullptr;
+//};
 
 struct inst_handles
 {

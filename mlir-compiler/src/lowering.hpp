@@ -1,5 +1,10 @@
 #pragma once
 
-#include <pybind11/pybind11.h>
+namespace pybind11
+{
+class bytes;
+class object;
+}
 
-pybind11::bytes lower_function(const pybind11::object& compilation_context, const pybind11::object& func_ir);
+pybind11::bytes lower_function(const pybind11::object& compilation_context,
+                               const pybind11::object& func_ir);
