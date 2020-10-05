@@ -45,7 +45,7 @@ std::string to_str(T& obj)
 template<typename T>
 T& get_dialect(mlir::MLIRContext& ctx)
 {
-    auto dialect = ctx.getRegisteredDialect<T>();
+    auto dialect = ctx.getOrLoadDialect<T>();
     assert(nullptr != dialect);
     return *dialect;
 }
@@ -169,7 +169,8 @@ struct plier_lowerer : public lowerer_base
         lowerer_base(context),
         dialect(get_dialect<plier::PlierDialect>(ctx))
     {
-
+        ctx.loadDialect<mlir::StandardOpsDialect>();
+        ctx.loadDialect<plier::PlierDialect>();
     }
 
     mlir::ModuleOp lower(const py::object& compilation_context, const py::object& func_ir)

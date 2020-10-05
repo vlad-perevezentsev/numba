@@ -5,6 +5,7 @@
 #include <mlir/IR/Builders.h>
 
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+#include <llvm/ADT/TypeSwitch.h>
 
 namespace plier
 {
@@ -33,8 +34,8 @@ struct PyTypeStorage : public mlir::TypeStorage
 };
 }
 
-PlierDialect::PlierDialect(mlir::MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void PlierDialect::initialize()
+{
     addOperations<
 #define GET_OP_LIST
 #include "plier/PlierOps.cpp.inc"
@@ -48,24 +49,20 @@ mlir::Type PlierDialect::parseType(mlir::DialectAsmParser &parser) const {
 }
 
 void PlierDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const {
-    switch (type.getKind()) {
-    case plier::types::PyType:
-        os << "PyType<" << type.cast<plier::PyType>().getName() << ">";
-        return;
-    default:
-        llvm_unreachable("unexpected type kind");
-    }
+    llvm::TypeSwitch<mlir::Type>(type)
+        .Case<plier::PyType>([&](auto t){ os << "PyType<" << t.getName() << ">"; })
+        .Default([](auto){ llvm_unreachable("unexpected type"); });
 }
 
-PyType PyType::get(MLIRContext* context, llvm::StringRef name)
+PyType PyType::get(mlir::MLIRContext* context, llvm::StringRef name)
 {
     assert(!name.empty());
-    return Base::get(context, types::PyType, name);
+    return Base::get(context, name);
 }
 
 PyType PyType::getUndefined(MLIRContext* context)
 {
-    return Base::get(context, types::PyType, "");
+    return Base::get(context, "");
 }
 
 llvm::StringRef PyType::getName() const
@@ -76,7 +73,7 @@ llvm::StringRef PyType::getName() const
 void ArgOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                   unsigned index, mlir::StringRef name) {
     ArgOp::build(builder, state, PyType::getUndefined(state.getContext()),
-                 llvm::APInt(32, index), name);
+                 index, name);
 }
 
 void ConstOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
@@ -122,7 +119,7 @@ void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func
     mlir::SmallVector<mlir::Value, 16> all_args;
     all_args.reserve(args.size() + kwargs.size());
     std::copy(args.begin(), args.end(), std::back_inserter(all_args));
-    auto kw_start = llvm::APInt(32, all_args.size());
+    auto kw_start = static_cast<uint32_t>(all_args.size());
     mlir::SmallVector<mlir::Attribute, 8> kw_names;
     kw_names.reserve(kwargs.size());
     for (auto& a : kwargs)
@@ -147,7 +144,7 @@ void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
 {
     StaticGetItemOp::build(builder, state,
                            PyType::getUndefined(state.getContext()),
-                           value, index_var, llvm::APInt(32, index));
+                           value, index_var, index);
 }
 
 void GetiterOp::build(OpBuilder &builder, OperationState &state,
@@ -178,9 +175,9 @@ void PairsecondOp::build(OpBuilder &builder, OperationState &state,
                         PyType::getUndefined(state.getContext()), value);
 }
 
+}
 
 #define GET_OP_CLASSES
 #include "plier/PlierOps.cpp.inc"
 
-}
 #include "plier/PlierOpsEnums.cpp.inc"

@@ -50,7 +50,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     MLIRSupport
     MLIRLLVMIR
-    MLIRStandardOps
+    MLIRStandard
     MLIRTargetLLVMIR
     MLIRTransforms
     )
