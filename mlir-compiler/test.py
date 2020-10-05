@@ -2,6 +2,7 @@ import numba
 
 _tests_total = 0
 _tests_passes = 0
+_failed_tests = []
 
 def ret(a):
     return a
@@ -49,8 +50,10 @@ def loop(n):
 def test(func, params):
     global _tests_total
     global _tests_passes
+    global _failed_tests
     _tests_total += 1
-    print('test', func.__name__, params, '... ', end='')
+    test_name = f'{func.__name__} {params}'
+    print('test', test_name, '... ', end='')
     result = func(*params)
     wrapped = numba.njit()(func)
     try:
@@ -62,6 +65,7 @@ def test(func, params):
     except Exception as e:
         print(e)
         print('FAILED')
+        _failed_tests.append(test_name)
 
 
 test(ret, (7,))
@@ -77,3 +81,7 @@ test(tuple, (1,2,3))
 test(loop, (8,))
 
 print(f'Tests passed: {_tests_passes}/{_tests_total}')
+if (len(_failed_tests) != 0):
+    print('Failed:')
+    for t in _failed_tests:
+        print(t)
