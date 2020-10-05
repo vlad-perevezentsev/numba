@@ -667,45 +667,25 @@ private:
     mlir::Value lower_expr(const py::handle& expr)
     {
         auto op = expr.attr("op").cast<std::string>();
-        if (op == "binop")
+        using func_t = mlir::Value (plier_lowerer::*)(const py::handle&);
+        const std::pair<mlir::StringRef, func_t> handlers[] = {
+            {"binop", &plier_lowerer::lower_binop},
+            {"cast", &plier_lowerer::lower_simple<plier::CastOp>},
+            {"call", &plier_lowerer::lower_call},
+            {"phi", &plier_lowerer::lower_phi},
+            {"build_tuple", &plier_lowerer::lower_build_tuple},
+            {"static_getitem", &plier_lowerer::lower_static_getitem},
+            {"getiter", &plier_lowerer::lower_simple<plier::GetiterOp>},
+            {"iternext", &plier_lowerer::lower_simple<plier::IternextOp>},
+            {"pair_first", &plier_lowerer::lower_simple<plier::PairfirstOp>},
+            {"pair_second", &plier_lowerer::lower_simple<plier::PairsecondOp>},
+        };
+        for (auto& h : handlers)
         {
-            return lower_binop(expr, expr.attr("fn"));
-        }
-        if (op == "cast")
-        {
-            return lower_simple<plier::CastOp>(expr);
-        }
-        if (op == "call")
-        {
-            return lower_call(expr);
-        }
-        if (op == "phi")
-        {
-            return lower_phi(expr);
-        }
-        if (op == "build_tuple")
-        {
-            return lower_build_tuple(expr);
-        }
-        if (op == "static_getitem")
-        {
-            return lower_static_getitem(expr);
-        }
-        if (op == "getiter")
-        {
-            return lower_simple<plier::GetiterOp>(expr);
-        }
-        if (op == "iternext")
-        {
-            return lower_simple<plier::IternextOp>(expr);
-        }
-        if (op == "pair_first")
-        {
-            return lower_simple<plier::PairfirstOp>(expr);
-        }
-        if (op == "pair_second")
-        {
-            return lower_simple<plier::PairsecondOp>(expr);
+            if (h.first == op)
+            {
+                return (this->*h.second)(expr);
+            }
         }
         report_error(llvm::Twine("lower_expr not handled: \"") + op + "\"");
     }
@@ -789,8 +769,9 @@ private:
                                                args_list, kwargs_list);
     }
 
-    mlir::Value lower_binop(const py::handle& expr, const py::handle& op)
+    mlir::Value lower_binop(const py::handle& expr)
     {
+        auto op = expr.attr("fn");
         auto lhs_name = expr.attr("lhs");
         auto rhs_name = expr.attr("rhs");
         auto lhs = loadvar(lhs_name);
