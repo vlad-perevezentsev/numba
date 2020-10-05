@@ -157,7 +157,7 @@ struct plier_lowerer
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         typemap = compilation_context["typemap"];
         auto name = compilation_context["fnname"]().cast<std::string>();
-        auto typ = get_func_type(/*compilation_context["fndesc"]*/nullptr);
+        auto typ = get_func_type(compilation_context["fnargs"]);
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
         mod.push_back(func);
@@ -186,10 +186,15 @@ private:
 
     std::unordered_map<mlir::Block*, BlockInfo> block_infos;
 
+    plier::PyType get_obj_type(const py::handle& obj) const
+    {
+        return plier::PyType::get(&ctx, py::str(obj).cast<std::string>());
+    }
+
     plier::PyType get_type(const py::handle& inst) const
     {
         auto type = typemap(inst);
-        return plier::PyType::get(&ctx, py::str(type).cast<std::string>());
+        return get_obj_type(type);
     }
 
     void lower_func_body(const py::object& func_ir)
@@ -485,20 +490,14 @@ private:
         report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
-    mlir::FunctionType get_func_type(const py::handle& typedesc)
+    mlir::FunctionType get_func_type(const py::handle& fnargs)
     {
-        auto get_type = [&](const auto& h) {
-//            return parse_type(py::str(h).cast<std::string>());
-            return plier::PyType::getUndefined(&ctx);
-        };
-//        auto p_func = typedesc();
-//        auto ret = get_type(p_func.attr("restype"));
         auto ret = plier::PyType::getUndefined(&ctx);
         llvm::SmallVector<mlir::Type, 8> args;
-//        for (auto arg : p_func.attr("argtypes"))
-//        {
-//            args.push_back(get_type(arg));
-//        }
+        for (auto arg : fnargs())
+        {
+            args.push_back(get_obj_type(arg));
+        }
         return mlir::FunctionType::get(args, {ret}, &ctx);
     }
 

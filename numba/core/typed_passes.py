@@ -476,7 +476,7 @@ class MlirBackend(LoweringPass):
         ctx = {}
         ctx['typemap'] = lambda op: state.typemap[op.name]
         # ctx['fndesc'] = lambda: fndesc
-        # ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
+        ctx['fnargs'] = lambda: state.args
         ctx['fnname'] = lambda: state.func_ir.func_id.func_qualname
         # ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
         import mlir_compiler
