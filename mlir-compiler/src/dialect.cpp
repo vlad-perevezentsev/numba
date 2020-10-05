@@ -94,6 +94,17 @@ void CastOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
     CastOp::build(builder, state, PyType::get(state.getContext()), val);
 }
 
+mlir::OpFoldResult CastOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+{
+    auto op_type = getOperand().getType();
+    auto ret_type = getType();
+    if (op_type == ret_type && op_type != PyType::get(getContext()))
+    {
+        return getOperand();
+    }
+    return nullptr;
+}
+
 void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func,
                      mlir::ValueRange args,
                      mlir::ArrayRef<std::pair<std::string, mlir::Value>> kwargs) {

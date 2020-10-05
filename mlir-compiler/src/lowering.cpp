@@ -593,6 +593,6 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     mod.dump();
     CompilerContext compiler(context);
     compiler.run(mod);
-//    mod.dump();
+    mod.dump();
     return {};
 }

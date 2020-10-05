@@ -50,6 +50,7 @@ target_link_libraries(${PROJECT_NAME}
     MLIRLLVMIR
     MLIRStandardOps
     MLIRTargetLLVMIR
+    MLIRTransforms
     )
 
 target_include_directories(${PROJECT_NAME}

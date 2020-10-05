@@ -2,7 +2,9 @@
 
 #include <mlir/IR/Module.h>
 #include <mlir/IR/Function.h>
+#include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
+#include <mlir/Transforms/Passes.h>
 
 #include "utils.hpp"
 
@@ -12,11 +14,18 @@ public:
     CompilerContextImpl(mlir::MLIRContext& ctx):
         pm(&ctx)
     {
+        pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
         auto& funcPm = pm.nest<mlir::FuncOp>();
         // TODO
     }
 
-    mlir::PassManager& get_pm() { return pm; }
+    void run(mlir::ModuleOp& module)
+    {
+        if (mlir::failed(pm.run(module)))
+        {
+            report_error("Compiler pipeline failed");
+        }
+    }
 private:
     mlir::PassManager pm;
 };
@@ -34,8 +43,5 @@ CompilerContext::~CompilerContext()
 
 void CompilerContext::run(mlir::ModuleOp module)
 {
-    if (mlir::failed(impl->get_pm().run(module)))
-    {
-        report_error("Compiler pipeline failed");
-    }
+    impl->run(module);
 }

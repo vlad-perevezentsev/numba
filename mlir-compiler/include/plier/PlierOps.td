@@ -69,6 +69,7 @@ def CastOp : Plier_Op<"cast", []> {
                      Plier_PyType:$value);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
         OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value val">
