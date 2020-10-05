@@ -41,7 +41,8 @@ public:
 
     static bool kindof(unsigned kind) { return kind == types::PyType; }
 
-    static PyType get(mlir::MLIRContext *context, mlir::StringRef name = {});
+    static PyType get(mlir::MLIRContext *context, mlir::StringRef name);
+    static PyType getUndefined(mlir::MLIRContext *context);
 
     mlir::StringRef getName() const;
 };

@@ -468,7 +468,7 @@ private:
         auto new_ret_type = var.getType();
         if (ret_type != new_ret_type)
         {
-            auto def_type = plier::PyType::get(&ctx);
+            auto def_type = plier::PyType::getUndefined(&ctx);
             if (ret_type != def_type)
             {
                 report_error(llvm::Twine("Conflicting return types: ") + to_str(ret_type) + " and " + to_str(new_ret_type));
@@ -506,11 +506,11 @@ private:
     {
         auto get_type = [&](const auto& h) {
 //            return parse_type(py::str(h).cast<std::string>());
-            return plier::PyType::get(&ctx);
+            return plier::PyType::getUndefined(&ctx);
         };
 //        auto p_func = typedesc();
 //        auto ret = get_type(p_func.attr("restype"));
-        auto ret = plier::PyType::get(&ctx);
+        auto ret = plier::PyType::getUndefined(&ctx);
         llvm::SmallVector<mlir::Type, 8> args;
 //        for (auto arg : p_func.attr("argtypes"))
 //        {
