@@ -20,6 +20,7 @@ include(HandleLLVMOptions)
 add_subdirectory(include/plier)
 
 set(SOURCES_LIST
+    src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
     src/module.cpp
@@ -27,6 +28,7 @@ set(SOURCES_LIST
     src/utils.cpp
     )
 set(HEADERS_LIST
+    src/compiler.hpp
     src/lowering.hpp
     src/type_parser.hpp
     src/utils.hpp

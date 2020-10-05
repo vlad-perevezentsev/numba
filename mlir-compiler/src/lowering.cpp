@@ -12,8 +12,10 @@
 #include <mlir/IR/StandardTypes.h>
 
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+
 #include "plier/dialect.hpp"
 
+#include "compiler.hpp"
 #include "utils.hpp"
 
 namespace py = pybind11;
@@ -30,15 +32,15 @@ namespace
 //    return ret;
 //}
 
-//template<typename T>
-//std::string to_str(T& obj)
-//{
-//    std::string ret;
-//    llvm::raw_string_ostream stream(ret);
-//    obj.print(stream);
-//    stream.flush();
-//    return ret;
-//}
+template<typename T>
+std::string to_str(T& obj)
+{
+    std::string ret;
+    llvm::raw_string_ostream stream(ret);
+    obj.print(stream);
+    stream.flush();
+    return ret;
+}
 
 template<typename T>
 T& get_dialect(mlir::MLIRContext& ctx)
@@ -150,10 +152,10 @@ struct inst_handles
 
 struct lowerer_base
 {
-    lowerer_base(): builder(&ctx) {}
+    lowerer_base(mlir::MLIRContext& context): ctx(context), builder(&ctx) {}
 
 protected:
-    mlir::MLIRContext ctx;
+    mlir::MLIRContext& ctx;
     mlir::OpBuilder builder;
     mlir::Block::BlockArgListType fnargs;
     std::vector<mlir::Block*> blocks;
@@ -163,7 +165,8 @@ protected:
 
 struct plier_lowerer : public lowerer_base
 {
-    plier_lowerer():
+    plier_lowerer(mlir::MLIRContext& context):
+        lowerer_base(context),
         dialect(get_dialect<plier::PlierDialect>(ctx))
     {
 
@@ -178,12 +181,6 @@ struct plier_lowerer : public lowerer_base
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
         mod.push_back(func);
-        mod.dump();
-        if (mlir::failed(mod.verify()))
-        {
-            report_error("MLIR module validation failed");
-        }
-
         return mod;
     }
 private:
@@ -200,9 +197,16 @@ private:
         };
         llvm::SmallVector<PhiDesc, 2> outgoing_phi_nodes;
     };
+    py::handle current_instr;
     py::handle typemap;
 
     std::unordered_map<mlir::Block*, BlockInfo> block_infos;
+
+    plier::PyType get_type(const py::handle& inst) const
+    {
+        auto type = typemap(inst);
+        return plier::PyType::get(&ctx, py::str(type).cast<std::string>());
+    }
 
     void lower_func_body(const py::object& func_ir)
     {
@@ -230,7 +234,9 @@ private:
         builder.setInsertionPointToEnd(bb);
         for (auto it : get_body(ir_block))
         {
+            current_instr = it;
             lower_inst(it);
+            current_instr = nullptr;
         }
     }
 
@@ -349,17 +355,17 @@ private:
         return builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args);
     }
 
-    mlir::Value lower_phi(const py::handle& inst)
+    mlir::Value lower_phi(const py::handle& expr)
     {
-        auto incoming_vals = inst.attr("incoming_values").cast<py::list>();
-        auto incoming_blocks = inst.attr("incoming_blocks").cast<py::list>();
+        auto incoming_vals = expr.attr("incoming_values").cast<py::list>();
+        auto incoming_blocks = expr.attr("incoming_blocks").cast<py::list>();
         assert(incoming_vals.size() == incoming_blocks.size());
 
         auto current_block = builder.getBlock();
         assert(nullptr != current_block);
 
         auto arg_index = current_block->getNumArguments();
-        auto arg = current_block->addArgument(plier::PyType::get(&ctx));
+        auto arg = current_block->addArgument(get_type(current_instr.attr("target")));
 
         auto count = incoming_vals.size();
         for (std::size_t i = 0; i < count; ++i)
@@ -437,8 +443,7 @@ private:
     void storevar(mlir::Value val, const py::handle& inst)
     {
         vars_map[inst.attr("name").cast<std::string>()] = val;
-        auto type = typemap(inst);
-        val.setType(plier::PyType::get(&ctx, py::str(type).cast<std::string>()));
+        val.setType(get_type(inst));
     }
 
     mlir::Value loadvar(const py::handle& inst)
@@ -458,6 +463,19 @@ private:
     {
         auto var = loadvar(inst);
         builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
+        auto func_type = func.getType();
+        auto ret_type = func_type.getResult(0);
+        auto new_ret_type = var.getType();
+        if (ret_type != new_ret_type)
+        {
+            auto def_type = plier::PyType::get(&ctx);
+            if (ret_type != def_type)
+            {
+                report_error(llvm::Twine("Conflicting return types: ") + to_str(ret_type) + " and " + to_str(new_ret_type));
+            }
+            auto new_func_type = mlir::FunctionType::get(func_type.getInputs(), new_ret_type, &ctx);
+            func.setType(new_func_type);
+        }
     }
 
     void branch(const py::handle& cond, const py::handle& tr, const py::handle& fl)
@@ -465,7 +483,8 @@ private:
         auto c = loadvar(cond);
         auto tr_block = blocks_map.find(tr.cast<int>())->second;
         auto fl_block = blocks_map.find(fl.cast<int>())->second;
-        builder.create<mlir::CondBranchOp>(builder.getUnknownLoc(), c, tr_block, fl_block);
+        auto cond_val = builder.create<plier::CastOp>(builder.getUnknownLoc(), mlir::IntegerType::get(1, &ctx), c);
+        builder.create<mlir::CondBranchOp>(builder.getUnknownLoc(), cond_val, tr_block, fl_block);
     }
 
     void jump(const py::handle& target)
@@ -508,13 +527,16 @@ private:
             {
                 if (o.dest_block == block)
                 {
-                    if (list.size() <= o.arg_index)
+                    auto arg_index = o.arg_index;
+                    if (list.size() <= arg_index)
                     {
-                        list.resize(o.arg_index + 1);
+                        list.resize(arg_index + 1);
                     }
                     auto it = vars_map.find(o.var_name);
                     assert(vars_map.end() != it);
-                    list[o.arg_index] = it->second;
+                    auto arg_type = block->getArgument(arg_index).getType();
+                    auto val = builder.create<plier::CastOp>(builder.getUnknownLoc(), arg_type, it->second);
+                    list[arg_index] = val;
                 }
             }
         };
@@ -527,7 +549,7 @@ private:
                 auto term = bb.getTerminator();
                 if (nullptr == term)
                 {
-                    report_error("broken ir: block withoout terminator");
+                    report_error("broken ir: block without terminator");
                 }
                 builder.setInsertionPointToEnd(&bb);
 
@@ -566,6 +588,11 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
 {
     mlir::registerDialect<mlir::StandardOpsDialect>();
     mlir::registerDialect<plier::PlierDialect>();
-    auto mod = plier_lowerer().lower(compilation_context, func_ir);
+    mlir::MLIRContext context;
+    auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
+    mod.dump();
+    CompilerContext compiler(context);
+    compiler.run(mod);
+//    mod.dump();
     return {};
 }
