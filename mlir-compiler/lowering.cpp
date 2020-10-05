@@ -541,8 +541,7 @@ struct plier_lowerer : public lowerer_base
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         typemap = compilation_context["typemap"];
-//        auto name = compilation_context["fnname"]().cast<std::string>();
-        auto name = "test";
+        auto name = compilation_context["fnname"]().cast<std::string>();
         auto typ = get_func_type(/*compilation_context["fndesc"]*/nullptr);
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
@@ -552,13 +551,6 @@ struct plier_lowerer : public lowerer_base
         {
             report_error("MLIR module validation failed");
         }
-//        var_type_resolver = compilation_context["get_var_type"];
-//        auto typ = get_func_type(compilation_context["fntype"]);
-//        func =  builder.create<mllvm::LLVMFuncOp>(builder.getUnknownLoc(), name, typ);
-//
-//        auto llvmmod = mlir::translateModuleToLLVMIR(mod);
-//        //        llvmmod->dump();
-//        return py::bytes(serialize_mod(*llvmmod));
 
         return {};
     }
@@ -655,11 +647,7 @@ private:
         }
         if(py::isinstance(value, insts.Var))
         {
-            auto var = loadvar(value);
-            return var;
-//            return builder.create<plier::AssignOp>(
-//                builder.getUnknownLoc(), var,
-//                value.attr("name").cast<std::string>());
+            return loadvar(value);
         }
         if (py::isinstance(value, insts.Const))
         {
