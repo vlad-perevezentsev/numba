@@ -367,6 +367,7 @@ class NativeLowering(LoweringPass):
             with targetctx.push_code_library(library):
                 lower = lowering.Lower(targetctx, library, fndesc, interp,
                                        metadata=metadata)
+                setattr(lower, 'mlir_blob', state.mlir_blob)
                 lower.lower()
                 if not flags.no_cpython_wrapper:
                     lower.create_cpython_wrapper(flags.release_gil)
@@ -473,14 +474,33 @@ class MlirBackend(LoweringPass):
         pass
 
     def run_pass(self, state):
+        targetctx = state.targetctx
+        library = state.library
+        interp = state.func_ir  # why is it called this?!
+        typemap = state.typemap
+        restype = state.return_type
+        calltypes = state.calltypes
+        flags = state.flags
+        metadata = state.metadata
+
+        msg = ("Function %s failed at nopython "
+               "mode lowering" % (state.func_id.func_name,))
+        with fallback_context(state, msg):
+            # Lowering
+            fndesc = \
+                funcdesc.PythonFunctionDescriptor.from_specialized_function(
+                    interp, typemap, restype, calltypes,
+                    mangler=targetctx.mangler, inline=flags.forceinline,
+                    noalias=flags.noalias)
+            fn_name = fndesc.mangled_name
+
         ctx = {}
         ctx['typemap'] = lambda op: state.typemap[op.name]
-        # ctx['fndesc'] = lambda: fndesc
         ctx['fnargs'] = lambda: state.args
-        ctx['fnname'] = lambda: state.func_ir.func_id.func_qualname
-        # ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
+        ctx['fnname'] = lambda: fn_name
         import mlir_compiler
-        mlir_compiler.lower_normal_function(ctx, state.func_ir)
+        mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)
+        setattr(state, 'mlir_blob', mod)
         return True
 
 

@@ -11,7 +11,7 @@ from numba.core.errors import (LoweringError, new_error_context, TypingError,
 from numba.core.funcdesc import default_mangler
 from numba.core.environment import Environment
 
-_use_mlir = False
+_use_mlir = True
 
 _VarArgItem = namedtuple("_VarArgItem", ("vararg", "index"))
 
@@ -186,13 +186,7 @@ class BaseLower(object):
         Lower non-generator *fndesc*.
         """
         if _use_mlir:
-            ctx = {}
-            ctx['fndesc'] = lambda: fndesc
-            ctx['fntype'] = lambda: self.context.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
-            ctx['fnname'] = lambda: fndesc.mangled_name
-            ctx['get_var_type'] = lambda name: self.context.get_value_type(self.typeof(name))
-            import mlir_compiler
-            mod_ir = mlir_compiler.lower_normal_function(ctx, self.func_ir)
+            mod_ir = self.mlir_blob
             import llvmlite.binding as llvm
             mod = llvm.parse_bitcode(mod_ir)
 
