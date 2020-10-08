@@ -16,8 +16,6 @@
 
 #include "utils.hpp"
 
-#include <iostream>
-
 namespace
 {
 const mlir::LowerToLLVMOptions &getLLVMOptions()
@@ -82,7 +80,7 @@ mlir::Type getExceptInfoType(LLVMTypeHelper& type_helper)
     return mlir::LLVM::LLVMStructType::getLiteral(&type_helper.get_context(), elems);
 }
 
-mlir::FunctionType fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
+void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
     auto old_type = func.getType();
     assert(old_type.getNumResults() == 1);
@@ -105,10 +103,10 @@ mlir::FunctionType fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
     add_arg(ptr(old_type.getResult(0)));
     add_arg(ptr(ptr(getExceptInfoType(type_helper))));
 
-    auto old_args = old_type.getResults();
+    auto old_args = old_type.getInputs();
     std::copy(old_args.begin(), old_args.end(), std::back_inserter(args));
     auto ret_type = mlir::IntegerType::get(32, &ctx);
-    return mlir::FunctionType::get(args, ret_type, &ctx);
+    func.setType(mlir::FunctionType::get(args, ret_type, &ctx));
 }
 
 struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
@@ -232,7 +230,7 @@ struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::Functio
         };
 
         auto func = getFunction();
-        func.setType(fix_func_sig(type_helper, func));
+        fix_func_sig(type_helper, func);
 
         patterns.insert<ReturnOpLowering>(&getContext(),
                                           type_helper.get_type_converter());
