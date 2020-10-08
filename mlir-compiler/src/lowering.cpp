@@ -10,8 +10,11 @@
 #include <mlir/IR/Module.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/StandardTypes.h>
-
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+
+#include <mlir/Target/LLVMIR.h>
+
+#include <llvm/Bitcode/BitcodeWriter.h>
 
 #include "plier/dialect.hpp"
 
@@ -22,15 +25,15 @@ namespace py = pybind11;
 namespace
 {
 
-//std::string serialize_mod(const llvm::Module& mod)
-//{
-//    std::string ret;
-//    llvm::raw_string_ostream stream(ret);
-////    mod.print(stream, nullptr);
-//    llvm::WriteBitcodeToFile(mod, stream);
-//    stream.flush();
-//    return ret;
-//}
+std::string serialize_mod(const llvm::Module& mod)
+{
+    std::string ret;
+    llvm::raw_string_ostream stream(ret);
+//    mod.print(stream, nullptr);
+    llvm::WriteBitcodeToFile(mod, stream);
+    stream.flush();
+    return ret;
+}
 
 template<typename T>
 std::string to_str(T& obj)
@@ -558,5 +561,9 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     CompilerContext compiler(context);
     compiler.run(mod);
     mod.dump();
-    return {};
+
+    llvm::LLVMContext ll_ctx;
+    auto ll_mod = mlir::translateModuleToLLVMIR(mod, ll_ctx);
+    ll_mod->dump();
+    return serialize_mod(*ll_mod);
 }
