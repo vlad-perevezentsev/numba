@@ -16,7 +16,7 @@ class CompilerContext::CompilerContextImpl
 {
 public:
     CompilerContextImpl(mlir::MLIRContext& ctx):
-        pm(&ctx, /*verify*/false)
+        pm(&ctx, /*verify*/true)
     {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(createPlierToStdPass());

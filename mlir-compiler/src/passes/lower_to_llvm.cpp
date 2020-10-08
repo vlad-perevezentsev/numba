@@ -1,5 +1,6 @@
 #include "passes/lower_to_llvm.hpp"
 
+#include <mlir/IR/PatternMatch.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
@@ -81,7 +82,7 @@ mlir::Type getExceptInfoType(LLVMTypeHelper& type_helper)
     return mlir::LLVM::LLVMStructType::getLiteral(&type_helper.get_context(), elems);
 }
 
-mlir::FunctionType legalize_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
+mlir::FunctionType fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
     auto old_type = func.getType();
     assert(old_type.getNumResults() == 1);
@@ -154,8 +155,24 @@ private:
     mlir::TypeConverter& type_converter;
 };
 
-struct LegalizeForNative :
-    public mlir::PassWrapper<LegalizeForNative, mlir::FunctionPass>
+struct RemoveBitcasts : public mlir::OpRewritePattern<mlir::LLVM::BitcastOp>
+{
+    using mlir::OpRewritePattern<mlir::LLVM::BitcastOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(mlir::LLVM::BitcastOp op,
+                                        mlir::PatternRewriter& rewriter) const
+    {
+        if (op.getType() == op.getOperand().getType())
+        {
+            rewriter.replaceOp(op, op.getOperand());
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
+
+template <typename PassT>
+struct LLVMLowererBase : public mlir::PassWrapper<PassT, mlir::FunctionPass>
 {
     virtual void getDependentDialects(
         mlir::DialectRegistry &registry) const override
@@ -164,37 +181,102 @@ struct LegalizeForNative :
         registry.insert<mlir::LLVM::LLVMDialect>();
     }
 
-    void runOnFunction() override;
+    void runOnFunction() override final
+    {
+        LLVMTypeHelper type_helper(getContext());
+
+        mlir::OwningRewritePatternList patterns;
+        auto apply_conv = [&]()
+        {
+            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+        };
+        static_cast<PassT*>(this)->run(type_helper, patterns, apply_conv);
+    }
 };
 
-void LegalizeForNative::runOnFunction()
+class LLVMFunctionPass : public mlir::OperationPass<mlir::LLVM::LLVMFuncOp>
 {
-    LLVMTypeHelper type_helper(getContext());
-    auto func = getFunction();
-    func.setType(legalize_func_sig(type_helper, func));
+public:
+  using OperationPass<mlir::LLVM::LLVMFuncOp>::OperationPass;
 
-    mlir::ConversionTarget target(getContext());
-    target.addLegalDialect<mlir::LLVM::LLVMDialect>();
+  /// The polymorphic API that runs the pass over the currently held function.
+  virtual void runOnFunction() = 0;
 
-    mlir::OwningRewritePatternList patterns;
-    patterns.insert<ReturnOpLowering>(&getContext(),
-                                      type_helper.get_type_converter());
+  /// The polymorphic API that runs the pass over the currently held operation.
+  void runOnOperation() final {
+    if (!getFunction().isExternal())
+      runOnFunction();
+  }
 
-    auto apply_conv = [&]()
+  /// Return the current function being transformed.
+  mlir::LLVM::LLVMFuncOp getFunction() { return this->getOperation(); }
+};
+
+struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::FunctionPass>
+{
+    virtual void getDependentDialects(
+        mlir::DialectRegistry &registry) const override
     {
-        return mlir::applyPartialConversion(getOperation(), target, patterns);
-    };
-
-    if (mlir::failed(apply_conv()))
-    {
-        signalPassFailure();
-        return;
+        registry.insert<mlir::StandardOpsDialect>();
+        registry.insert<mlir::LLVM::LLVMDialect>();
     }
-}
+
+    void runOnFunction() override final
+    {
+        LLVMTypeHelper type_helper(getContext());
+
+        mlir::OwningRewritePatternList patterns;
+        auto apply_conv = [&]()
+        {
+            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+        };
+
+        auto func = getFunction();
+        func.setType(fix_func_sig(type_helper, func));
+
+        patterns.insert<ReturnOpLowering>(&getContext(),
+                                          type_helper.get_type_converter());
+
+        if (mlir::failed(apply_conv()))
+        {
+            signalPassFailure();
+            return;
+        }
+    }
+};
+
+struct PostLLVMLowering :
+    public mlir::PassWrapper<PostLLVMLowering, LLVMFunctionPass>
+{
+    virtual void getDependentDialects(
+        mlir::DialectRegistry &registry) const override
+    {
+        registry.insert<mlir::LLVM::LLVMDialect>();
+    }
+
+    void runOnFunction() override final
+    {
+        mlir::OwningRewritePatternList patterns;
+        auto apply_conv = [&]()
+        {
+            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+        };
+
+        // Remove redundant bitcasts we have created on PreLowering
+        patterns.insert<RemoveBitcasts>(&getContext());
+
+        if (mlir::failed(apply_conv()))
+        {
+            signalPassFailure();
+            return;
+        }
+    }
+};
 }
 
 void populate_lower_to_llvm_pipeline(mlir::PassManager& pm)
 {
-    pm.addPass(std::make_unique<LegalizeForNative>());
+    pm.addPass(std::make_unique<PreLLVMLowering>());
     pm.addPass(mlir::createLowerToLLVMPass(getLLVMOptions()));
+    pm.addPass(std::make_unique<PostLLVMLowering>());
 }
