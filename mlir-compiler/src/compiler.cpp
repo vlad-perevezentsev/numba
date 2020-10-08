@@ -5,10 +5,12 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
+#include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
 
 #include "utils.hpp"
 
 #include "passes/plier_to_std.hpp"
+#include "passes/lower_to_llvm.hpp"
 
 class CompilerContext::CompilerContextImpl
 {
@@ -18,6 +20,9 @@ public:
     {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(createPlierToStdPass());
+
+        populate_lower_to_llvm_pipeline(pm);
+
         pm.enableStatistics();
         pm.enableTiming();
     }

@@ -24,6 +24,7 @@ set(SOURCES_LIST
     src/dialect.cpp
     src/lowering.cpp
     src/module.cpp
+    src/passes/lower_to_llvm.cpp
     src/passes/plier_to_std.cpp
     src/type_parser.cpp
     src/utils.cpp
@@ -31,6 +32,7 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     src/compiler.hpp
     src/lowering.hpp
+    src/passes/lower_to_llvm.hpp
     src/passes/plier_to_std.hpp
     src/type_parser.hpp
     src/utils.hpp
@@ -46,17 +48,20 @@ endif ()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${LLVM_DEFINITIONS})
 
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    LLVM${LLVM_NATIVE_ARCH}CodeGen
+    LLVM${LLVM_NATIVE_ARCH}Desc
+    LLVMTarget
     MLIRSupport
     MLIRLLVMIR
     MLIRStandard
     MLIRTargetLLVMIR
     MLIRTransforms
+    MLIRStandardToLLVM
     )
 
-target_include_directories(${PROJECT_NAME}
-    PRIVATE
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ./src
     ./include
     ${LLVM_INCLUDE_DIRS}
     ${MLIR_INCLUDE_DIRS}
