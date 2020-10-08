@@ -59,24 +59,6 @@ py::list get_body(const py::handle& block)
     return block.attr("body").cast<py::list>();
 }
 
-//struct scoped_goto_block
-//{
-//    scoped_goto_block(mlir::OpBuilder& b, mlir::Block* new_block):
-//        builder(b),
-//        old_block(b.getBlock())
-//    {
-//        builder.setInsertionPointToEnd(new_block);
-//    }
-
-//    ~scoped_goto_block()
-//    {
-//        builder.setInsertionPointToEnd(old_block);
-//    }
-
-//    mlir::OpBuilder& builder;
-//    mlir::Block* old_block = nullptr;
-//};
-
 struct inst_handles
 {
     inst_handles()
