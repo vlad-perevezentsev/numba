@@ -34,6 +34,16 @@ mlir::Type map_int_literal_type(plier::PyType type)
     return {};
 }
 
+mlir::Type map_bool_type(plier::PyType type)
+{
+    auto name = type.getName();
+    if (name == "bool")
+    {
+        return mlir::IntegerType::get(1, type.getContext());
+    }
+    return {};
+}
+
 mlir::Type map_plier_type(mlir::Type type)
 {
     if (!type.isa<plier::PyType>())
@@ -45,6 +55,7 @@ mlir::Type map_plier_type(mlir::Type type)
     const func_t handlers[] = {
         &map_int_type,
         &map_int_literal_type,
+        &map_bool_type,
     };
     for (auto h : handlers)
     {
@@ -68,21 +79,31 @@ mlir::Type map_type(mlir::Type type)
     return mlir::Type() == new_type ? type : new_type;
 };
 
-void convertFuncArgs(mlir::FuncOp func)
+bool convertFuncArgs(mlir::FuncOp func)
 {
     llvm::SmallVector<mlir::Type, 8> new_arg_types;
     new_arg_types.reserve(func.getNumArguments());
+    bool changed = false;
     for (auto arg_type : func.getArgumentTypes())
     {
-        new_arg_types.push_back(map_type(arg_type));
+        auto new_type = map_type(arg_type);
+        changed = changed || (new_type != arg_type);
+        new_arg_types.push_back(new_type);
     }
-    auto res_type = map_type(func.getType().getResult(0));
-    auto func_type = mlir::FunctionType::get(new_arg_types, res_type, func.getContext());
-    func.setType(func_type);
-    for (unsigned i = 0; i < func.getNumArguments(); ++i)
+
+    auto res_type = func.getType().getResult(0);
+    auto new_res_type = map_type(res_type);
+    changed = changed || (res_type != new_res_type);
+    if (changed)
     {
-        func.front().getArgument(i).setType(new_arg_types[i]);
+        auto func_type = mlir::FunctionType::get(new_arg_types, new_res_type, func.getContext());
+        func.setType(func_type);
+        for (unsigned i = 0; i < func.getNumArguments(); ++i)
+        {
+            func.front().getArgument(i).setType(new_arg_types[i]);
+        }
     }
+    return changed;
 }
 
 template<typename T>
@@ -172,34 +193,34 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
     }
 };
 
-struct FuncOpSignatureConversion :
-    public mlir::OpConversionPattern<mlir::FuncOp>
+struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 {
     FuncOpSignatureConversion(mlir::MLIRContext* ctx,
-                              mlir::TypeConverter& converter)
-        : OpConversionPattern(converter, ctx) {}
+                              mlir::TypeConverter& /*converter*/)
+        : OpRewritePattern(ctx) {}
 
     /// Hook for derived classes to implement combined matching and rewriting.
     mlir::LogicalResult
-    matchAndRewrite(mlir::FuncOp funcOp, mlir::ArrayRef<mlir::Value> /*operands*/,
-                    mlir::ConversionPatternRewriter &rewriter) const override
+    matchAndRewrite(mlir::FuncOp funcOp, mlir::PatternRewriter &rewriter) const override
     {
-        convertFuncArgs(funcOp);
-        rewriter.updateRootInPlace(funcOp, [&] {}); // HACK
-        return mlir::success();
+        bool changed = convertFuncArgs(funcOp);
+        if (changed)
+        {
+            rewriter.updateRootInPlace(funcOp, [&] {}); // HACK
+        }
+        return mlir::success(changed);
     }
 };
 
-struct OpTypeConversion : public mlir::ConversionPattern
+struct OpTypeConversion : public mlir::RewritePattern
 {
     OpTypeConversion(mlir::MLIRContext* /*ctx*/,
-                     mlir::TypeConverter& converter)
-        : ConversionPattern(0, converter, mlir::Pattern::MatchAnyOpTypeTag()) {}
+                     mlir::TypeConverter& /*converter*/)
+        : RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()) {}
 
     /// Hook for derived classes to implement combined matching and rewriting.
     mlir::LogicalResult
-    matchAndRewrite(mlir::Operation* op, mlir::ArrayRef<mlir::Value> /*operands*/,
-                    mlir::ConversionPatternRewriter &rewriter) const override
+    matchAndRewrite(mlir::Operation* op, mlir::PatternRewriter &rewriter) const override
     {
         bool changed = false;
         llvm::SmallVector<mlir::Type, 8> new_types;
@@ -225,9 +246,8 @@ struct OpTypeConversion : public mlir::ConversionPattern
                     op->getResult(i).setType(new_types[i]);
                 }
             });
-            return mlir::success();
         }
-        return mlir::failure();
+        return mlir::success(changed);
     }
 };
 
@@ -251,26 +271,16 @@ void PlierToStdPass::runOnOperation()
         return map_plier_type(type);
     });
 
-    mlir::ConversionTarget target(getContext());
-    target.addLegalDialect<mlir::StandardOpsDialect>();
-
     mlir::OwningRewritePatternList patterns;
     patterns.insert<FuncOpSignatureConversion,
                     OpTypeConversion>(&getContext(), type_converter);
+    patterns.insert<ConstOpLowering, BinOpLowering>(&getContext());
 
     auto apply_conv = [&]()
     {
-        return mlir::applyPartialConversion(getOperation(), target, patterns);
+        return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
     };
 
-    if (mlir::failed(apply_conv()))
-    {
-        signalPassFailure();
-        return;
-    }
-
-    patterns.clear();
-    patterns.insert<ConstOpLowering, BinOpLowering>(&getContext());
     if (mlir::failed(apply_conv()))
     {
         signalPassFailure();
