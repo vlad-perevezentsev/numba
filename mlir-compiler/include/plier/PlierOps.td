@@ -17,7 +17,7 @@ def Plier_PyType : DialectType<Plier_Dialect,
 class Plier_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Plier_Dialect, mnemonic, traits>;
 
-def ArgOp : Plier_Op<"arg", []> {
+def ArgOp : Plier_Op<"arg", [NoSideEffect]> {
     let arguments = (ins
                      UI32Attr:$index,
                      StrAttr:$name);
@@ -30,7 +30,7 @@ def ArgOp : Plier_Op<"arg", []> {
     ];
 }
 
-def ConstOp : Plier_Op<"const", []> {
+def ConstOp : Plier_Op<"const", [NoSideEffect]> {
     let arguments = (ins
                      AnyAttr:$val);
 
@@ -41,7 +41,7 @@ def ConstOp : Plier_Op<"const", []> {
     ];
 }
 
-def GlobalOp : Plier_Op<"global", []> {
+def GlobalOp : Plier_Op<"global", [NoSideEffect]> {
   let arguments = (ins
                    StrAttr:$name);
 
@@ -58,7 +58,7 @@ def BinOp : Plier_Op<"binop", []> {
                    AnyType:$lhs,
                    StrAttr:$op);
 
-  let results = (outs Plier_PyType);
+  let results = (outs AnyType);
 
   let builders = [
       OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value rhs, ::mlir::Value lhs, StringRef op">

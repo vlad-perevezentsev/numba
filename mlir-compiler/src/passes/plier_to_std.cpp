@@ -5,6 +5,8 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/DialectConversion.h>
 
+#include <llvm/ADT/TypeSwitch.h>
+
 #include "plier/dialect.hpp"
 
 namespace
@@ -113,6 +115,15 @@ void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type
     rewriter.replaceOpWithNewOp<T>(op, new_type, op->getOperands());
 }
 
+template<typename T, uint64_t Pred>
+void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/)
+{
+    assert(nullptr != op);
+    auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(64, op->getContext()), Pred);
+    mlir::Type new_type = mlir::IntegerType::get(1, op->getContext());
+    rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, op->getOperand(0), op->getOperand(1));
+}
+
 bool is_int(mlir::Type type)
 {
     return type.isa<mlir::IntegerType>();
@@ -163,7 +174,9 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         };
 
         const OpDesc handlers[] = {
-            {"+", &replace_op<mlir::AddIOp>, &replace_op<mlir::AddFOp>}
+            {"+", &replace_op<mlir::AddIOp>, &replace_op<mlir::AddFOp>},
+            {">", &replace_cmp_op<mlir::CmpIOp, static_cast<uint64_t>(mlir::CmpIPredicate::sgt)>,
+                  &replace_cmp_op<mlir::CmpFOp, static_cast<uint64_t>(mlir::CmpFPredicate::OGT)>},
         };
 
         using membptr_t = func_t OpDesc::*;
@@ -192,6 +205,117 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         return mlir::failure();
     }
 };
+
+template <bool Signed>
+mlir::Value int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    auto src_bits = val.getType().cast<mlir::IntegerType>().getWidth();
+    auto dst_bits = dst_type.cast<mlir::IntegerType>().getWidth();
+    assert(src_bits != dst_bits);
+    if (dst_bits > src_bits)
+    {
+        using T = std::conditional_t<Signed, mlir::SignExtendIOp, mlir::ZeroExtendIOp>;
+        return rewriter.create<T>(val.getLoc(), val, dst_type);
+    }
+    else
+    {
+        return rewriter.create<mlir::TruncateIOp>(val.getLoc(), val, dst_type);
+    }
+}
+
+mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    auto src_type = val.getType();
+    if (src_type == dst_type)
+    {
+        return val;
+    }
+
+    struct Handler
+    {
+        using selector_t = bool(*)(mlir::Type);
+        using cast_op_t = mlir::Value(*)(mlir::Type, mlir::Value, mlir::PatternRewriter&);
+        selector_t src;
+        selector_t dst;
+        cast_op_t cast_op;
+    };
+
+    const Handler handlers[] = {
+        {&is_int, &is_int, &int_cast<true>},
+    };
+
+    for (auto& h : handlers)
+    {
+        if (h.src(src_type) && h.dst(dst_type))
+        {
+            return h.cast_op(dst_type, val, rewriter);
+        }
+    }
+
+    return nullptr;
+}
+
+mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& rewriter)
+{
+    if (op.getNumOperands() != 2)
+    {
+        return mlir::failure();
+    }
+    auto val = op.getOperand(1);
+    bool success = false;
+    auto replace_op = [&](mlir::Value val)
+    {
+        assert(!success);
+        if (val)
+        {
+            rewriter.replaceOp(op, val);
+            success = true;
+        }
+    };
+    auto src_type = val.getType();
+    auto dst_type = mlir::IntegerType::get(1, op.getContext());
+    mlir::TypeSwitch<mlir::Type>(src_type)
+        .Case<mlir::IntegerType>([&](auto) { replace_op(do_cast(dst_type, val, rewriter)); });
+    return mlir::success(success);
+}
+
+using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, mlir::PatternRewriter&);
+const constexpr std::pair<llvm::StringRef, call_lowerer_func_t> builtin_calls[] = {
+    {"<class 'bool'>", &lower_bool_cast},
+};
+
+struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
+{
+    using mlir::OpRewritePattern<plier::PyCallOp>::OpRewritePattern;
+
+    mlir::LogicalResult
+    matchAndRewrite(plier::PyCallOp op, mlir::PatternRewriter& rewriter) const override
+    {
+        if (op.getNumOperands() == 0)
+        {
+            return mlir::failure();
+        }
+        auto func_type = op.getOperand(0).getType();
+        if (!func_type.isa<plier::PyType>())
+        {
+            return mlir::failure();
+        }
+        auto name = func_type.cast<plier::PyType>().getName();
+        if (!name.consume_front("Function(") || !name.consume_back(")"))
+        {
+            return mlir::failure();
+        }
+        for (auto& c : builtin_calls)
+        {
+            if (c.first == name)
+            {
+                return c.second(op, rewriter);
+            }
+        }
+        return mlir::failure();
+    }
+};
+
 
 struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 {
@@ -274,7 +398,8 @@ void PlierToStdPass::runOnOperation()
     mlir::OwningRewritePatternList patterns;
     patterns.insert<FuncOpSignatureConversion,
                     OpTypeConversion>(&getContext(), type_converter);
-    patterns.insert<ConstOpLowering, BinOpLowering>(&getContext());
+    patterns.insert<ConstOpLowering, BinOpLowering,
+                    CallOpLowering>(&getContext());
 
     auto apply_conv = [&]()
     {
