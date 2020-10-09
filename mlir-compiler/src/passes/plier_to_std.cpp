@@ -81,7 +81,7 @@ mlir::Type map_type(mlir::Type type)
     return mlir::Type() == new_type ? type : new_type;
 };
 
-bool convertFuncArgs(mlir::FuncOp func)
+bool convert_func_sig(mlir::FuncOp func)
 {
     llvm::SmallVector<mlir::Type, 8> new_arg_types;
     new_arg_types.reserve(func.getNumArguments());
@@ -103,6 +103,20 @@ bool convertFuncArgs(mlir::FuncOp func)
         for (unsigned i = 0; i < func.getNumArguments(); ++i)
         {
             func.front().getArgument(i).setType(new_arg_types[i]);
+        }
+    }
+    for (auto& bb : llvm::make_range(++func.getBody().begin(),
+                                     func.getBody().end()))
+    {
+        for (auto arg : bb.getArguments())
+        {
+            auto arg_type = arg.getType();
+            auto new_type = map_type(arg_type);
+            if (new_type != arg_type)
+            {
+                arg.setType(new_type);
+                changed = true;
+            }
         }
     }
     return changed;
@@ -327,7 +341,7 @@ struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
     mlir::LogicalResult
     matchAndRewrite(mlir::FuncOp funcOp, mlir::PatternRewriter &rewriter) const override
     {
-        bool changed = convertFuncArgs(funcOp);
+        bool changed = convert_func_sig(funcOp);
         if (changed)
         {
             rewriter.updateRootInPlace(funcOp, [&] {}); // HACK
