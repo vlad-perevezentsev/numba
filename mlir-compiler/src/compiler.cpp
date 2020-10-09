@@ -15,16 +15,28 @@
 class CompilerContext::CompilerContextImpl
 {
 public:
-    CompilerContextImpl(mlir::MLIRContext& ctx):
-        pm(&ctx, /*verify*/true)
+    CompilerContextImpl(mlir::MLIRContext& ctx,
+                        const CompilerContext::Settings& settings):
+        pm(&ctx, settings.verify)
     {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(createPlierToStdPass());
 
         populate_lower_to_llvm_pipeline(pm);
 
-        pm.enableStatistics();
-        pm.enableTiming();
+        if (settings.pass_statistics)
+        {
+            pm.enableStatistics();
+        }
+        if (settings.pass_timings)
+        {
+            pm.enableTiming();
+        }
+        if (settings.ir_printing)
+        {
+            ctx.enableMultithreading(false);
+            pm.enableIRPrinting();
+        }
     }
 
     void run(mlir::ModuleOp& module)
@@ -38,8 +50,8 @@ private:
     mlir::PassManager pm;
 };
 
-CompilerContext::CompilerContext(mlir::MLIRContext& ctx):
-    impl(std::make_unique<CompilerContextImpl>(ctx))
+CompilerContext::CompilerContext(mlir::MLIRContext& ctx, const Settings& settings):
+    impl(std::make_unique<CompilerContextImpl>(ctx, settings))
 {
 
 }

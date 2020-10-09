@@ -557,13 +557,16 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     mlir::registerDialect<plier::PlierDialect>();
     mlir::MLIRContext context;
     auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
-    mod.dump();
-    CompilerContext compiler(context);
+    CompilerContext::Settings settings;
+    settings.verify = true;
+    settings.pass_statistics = false;
+    settings.pass_timings = false;
+    settings.ir_printing = false;
+    CompilerContext compiler(context, settings);
     compiler.run(mod);
-    mod.dump();
 
     llvm::LLVMContext ll_ctx;
     auto ll_mod = mlir::translateModuleToLLVMIR(mod, ll_ctx);
-    ll_mod->dump();
+//    ll_mod->dump();
     return serialize_mod(*ll_mod);
 }

@@ -11,9 +11,17 @@ class ModuleOp;
 class CompilerContext
 {
 public:
+    struct Settings
+    {
+        bool verify = false;
+        bool pass_statistics = false;
+        bool pass_timings = false;
+        bool ir_printing = false;
+    };
+
     class CompilerContextImpl;
 
-    CompilerContext(mlir::MLIRContext& ctx);
+    CompilerContext(mlir::MLIRContext& ctx, const Settings& settings);
     ~CompilerContext();
 
     CompilerContext(CompilerContext&&) = default;
