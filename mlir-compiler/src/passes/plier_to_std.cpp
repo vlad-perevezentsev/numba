@@ -20,7 +20,7 @@ mlir::Type map_int_type(plier::PyType type)
     {
         return mlir::IntegerType::get(num_bits, type.getContext());
     }
-    return {};
+    return nullptr;
 }
 
 mlir::Type map_int_literal_type(plier::PyType type)
@@ -33,7 +33,7 @@ mlir::Type map_int_literal_type(plier::PyType type)
     {
         return mlir::IntegerType::get(64, type.getContext()); // TODO
     }
-    return {};
+    return nullptr;
 }
 
 mlir::Type map_bool_type(plier::PyType type)
@@ -43,7 +43,25 @@ mlir::Type map_bool_type(plier::PyType type)
     {
         return mlir::IntegerType::get(1, type.getContext());
     }
-    return {};
+    return nullptr;
+}
+
+mlir::Type map_float_type(plier::PyType type)
+{
+    auto name = type.getName();
+    unsigned num_bits = 0;
+    if (name.consume_front("float") &&
+        !name.consumeInteger<unsigned>(10, num_bits) && name.empty())
+    {
+        auto ctx = type.getContext();
+        switch(num_bits)
+        {
+        case 64: return mlir::Float64Type::get(ctx);
+        case 32: return mlir::Float32Type::get(ctx);
+        case 16: return mlir::Float16Type::get(ctx);
+        }
+    }
+    return nullptr;
 }
 
 mlir::Type map_plier_type(mlir::Type type)
@@ -59,6 +77,7 @@ mlir::Type map_plier_type(mlir::Type type)
         &map_int_type,
         &map_int_literal_type,
         &map_bool_type,
+        &map_float_type
     };
     for (auto h : handlers)
     {
@@ -175,10 +194,21 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         assert(op.getNumOperands() == 2);
         auto type0 = op.getOperand(0).getType();
         auto type1 = op.getOperand(1).getType();
-        if (type0 != type1 || !is_supported_type(type0) || !is_supported_type(type1))
+        if (!is_supported_type(type0) || !is_supported_type(type1))
         {
             return mlir::failure();
         }
+        mlir::Type final_type;
+        if (type0 != type1)
+        {
+            // TODO: coerce
+            return mlir::failure();
+        }
+        else
+        {
+            final_type = type0;
+        }
+        assert(static_cast<bool>(final_type));
 
         using func_t = void(*)(mlir::Operation*, mlir::PatternRewriter&, mlir::Type);
         struct OpDesc
@@ -214,7 +244,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {
                 if (h.type == op.op())
                 {
-                    (h.*mem)(op, rewriter, type0);
+                    (h.*mem)(op, rewriter, final_type);
                     return mlir::success();
                 }
             }
@@ -222,11 +252,11 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         };
 
 
-        if (is_int(type0))
+        if (is_int(final_type))
         {
             return call_handler(&OpDesc::iop);
         }
-        else if (is_float(type0))
+        else if (is_float(final_type))
         {
             return call_handler(&OpDesc::fop);
         }
