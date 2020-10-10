@@ -111,8 +111,12 @@ struct inst_handles
         {"-",  "sub"},
         {"*",  "mul"},
 
-        {"==", "eq"},
         {">",  "gt"},
+        {">=", "ge"},
+        {"<",  "lt"},
+        {"<=", "le"},
+        {"!=", "ne"},
+        {"==", "eq"},
     };
 
     std::array<py::handle, llvm::array_lengthof(ops_names)> ops_handles;
