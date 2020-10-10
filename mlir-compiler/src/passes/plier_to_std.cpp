@@ -189,6 +189,9 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
 
         const OpDesc handlers[] = {
             {"+", &replace_op<mlir::AddIOp>, &replace_op<mlir::AddFOp>},
+            {"-", &replace_op<mlir::SubIOp>, &replace_op<mlir::SubFOp>},
+            {"*", &replace_op<mlir::MulIOp>, &replace_op<mlir::MulFOp>},
+
             {">", &replace_cmp_op<mlir::CmpIOp, static_cast<uint64_t>(mlir::CmpIPredicate::sgt)>,
                   &replace_cmp_op<mlir::CmpFOp, static_cast<uint64_t>(mlir::CmpFPredicate::OGT)>},
         };

@@ -109,6 +109,7 @@ struct inst_handles
     static const constexpr OpId ops_names[] = {
         {"+",  "add"},
         {"-",  "sub"},
+        {"*",  "mul"},
 
         {"==", "eq"},
         {">",  "gt"},
@@ -348,9 +349,6 @@ private:
         auto args = expr.attr("args").cast<py::list>();
         auto kws = expr.attr("kws").cast<py::list>();
         auto vararg = expr.attr("vararg");
-//        std::cout << py::str(args).cast<std::string>() << std::endl;
-//        std::cout << py::str(kws).cast<std::string>() << std::endl;
-//        std::cout << py::str(vararg).cast<std::string>() << std::endl;
 
         mlir::SmallVector<mlir::Value, 8> args_list;
         mlir::SmallVector<std::pair<std::string, mlir::Value>, 8> kwargs_list;
