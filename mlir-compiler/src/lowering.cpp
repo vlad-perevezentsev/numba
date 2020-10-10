@@ -81,10 +81,11 @@ struct inst_handles
 
         auto ops = py::module::import("operator");
 
-        add = ops.attr("add");
-
-        eq = ops.attr("eq");
-        gt = ops.attr("gt");
+        for (auto elem : llvm::zip(ops_names, ops_handles))
+        {
+            auto name = std::get<0>(elem).name;
+            std::get<1>(elem) = ops.attr(name.data());
+        }
     }
 
     py::handle Assign;
@@ -99,33 +100,22 @@ struct inst_handles
     py::handle Const;
     py::handle Global;
 
-    py::handle add;
+    struct OpId
+    {
+        llvm::StringRef op;
+        llvm::StringRef name;
+    };
 
-    py::handle eq;
-    py::handle gt;
+    static const constexpr OpId ops_names[] = {
+        {"+",  "add"},
+        {"-",  "sub"},
+
+        {"==", "eq"},
+        {">",  "gt"},
+    };
+
+    std::array<py::handle, llvm::array_lengthof(ops_names)> ops_handles;
 };
-
-//struct type_cache
-//{
-//    using Type = mllvm::LLVMType;
-
-//    Type get_type(mlir::MLIRContext& context, llvm::StringRef str)
-//    {
-//        assert(!str.empty());
-//        auto s = str.str();
-//        auto it = typemap.find(s);
-//        if (typemap.end() != it)
-//        {
-//            return it->second;
-//        }
-//        auto type = parse_type(context, str);
-//        typemap[s] = type;
-//        return type;
-//    }
-
-//private:
-//    std::unordered_map<std::string, Type> typemap;
-//};
 
 struct plier_lowerer
 {
@@ -392,22 +382,13 @@ private:
 
     mlir::Value resolve_op(mlir::Value lhs, mlir::Value rhs, const py::handle& op)
     {
-        // TODO unhardcode
-        if (op.is(insts.add))
+        for (auto elem : llvm::zip(insts.ops_names, insts.ops_handles))
         {
-            return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, "+");
-        }
-//        if (op.is(insts.eq))
-//        {
-//            assert(lhs.getType() == rhs.getType());
-//            if (lhs.getType().cast<mllvm::LLVMType>().isIntegerTy())
-//            {
-//                return builder.create<mllvm::ICmpOp>(builder.getUnknownLoc(), mllvm::ICmpPredicate::eq, lhs, rhs);
-//            }
-//        }
-        if (op.is(insts.gt))
-        {
-            return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, ">");
+            if (op.is(std::get<1>(elem)))
+            {
+                auto op_name = std::get<0>(elem).op;
+                return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, op_name);
+            }
         }
 
         report_error(llvm::Twine("resolve_op not handled: \"") + py::str(op).cast<std::string>() + "\"");
