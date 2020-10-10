@@ -532,6 +532,33 @@ private:
     }
 
 };
+
+py::bytes gen_ll_module(mlir::ModuleOp mod)
+{
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
+    auto diag_handler = [&](mlir::Diagnostic& diag)
+    {
+        if (diag.getSeverity() == mlir::DiagnosticSeverity::Error)
+        {
+            err_stream << diag;
+        }
+    };
+    llvm::LLVMContext ll_ctx;
+    std::unique_ptr<llvm::Module> ll_mod;
+    scoped_diag_handler(*mod.getContext(), diag_handler, [&]()
+    {
+        ll_mod = mlir::translateModuleToLLVMIR(mod, ll_ctx);
+        if (nullptr == ll_mod)
+        {
+            err_stream.flush();
+            report_error(llvm::Twine("Cannot generate LLVM module\n") + err);
+        }
+    });
+    assert(nullptr != ll_mod);
+//    ll_mod->dump();
+    return serialize_mod(*ll_mod);
+}
 }
 
 py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
@@ -547,9 +574,5 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     settings.ir_printing = false;
     CompilerContext compiler(context, settings);
     compiler.run(mod);
-
-    llvm::LLVMContext ll_ctx;
-    auto ll_mod = mlir::translateModuleToLLVMIR(mod, ll_ctx);
-//    ll_mod->dump();
-    return serialize_mod(*ll_mod);
+    return gen_ll_module(mod);
 }

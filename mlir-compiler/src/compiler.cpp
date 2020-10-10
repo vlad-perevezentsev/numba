@@ -7,6 +7,11 @@
 #include <mlir/Transforms/Passes.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
 
+#include <mlir/IR/Diagnostics.h>
+
+#include <llvm/ADT/ScopeExit.h>
+#include <llvm/Support/raw_ostream.h>
+
 #include "utils.hpp"
 
 #include "passes/plier_to_std.hpp"
@@ -41,10 +46,24 @@ public:
 
     void run(mlir::ModuleOp& module)
     {
-        if (mlir::failed(pm.run(module)))
+        std::string err;
+        llvm::raw_string_ostream err_stream(err);
+        auto diag_handler = [&](mlir::Diagnostic& diag)
         {
-            report_error("Compiler pipeline failed");
-        }
+            if (diag.getSeverity() == mlir::DiagnosticSeverity::Error)
+            {
+                err_stream << diag;
+            }
+        };
+
+        scoped_diag_handler(*pm.getContext(), diag_handler, [&]()
+        {
+            if (mlir::failed(pm.run(module)))
+            {
+                err_stream.flush();
+                report_error(llvm::Twine("MLIR pipeline failed\n") + err);
+            }
+        });
     }
 private:
     mlir::PassManager pm;
