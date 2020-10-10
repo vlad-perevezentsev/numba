@@ -533,6 +533,16 @@ private:
 
 };
 
+CompilerContext::Settings get_settings(const py::handle& settings)
+{
+    CompilerContext::Settings ret;
+    ret.verify = settings["verify"].cast<bool>();
+    ret.pass_statistics = settings["pass_statistics"].cast<bool>();
+    ret.pass_timings = settings["pass_timings"].cast<bool>();
+    ret.ir_printing = settings["ir_printing"].cast<bool>();
+    return ret;
+}
+
 py::bytes gen_ll_module(mlir::ModuleOp mod)
 {
     std::string err;
@@ -567,12 +577,7 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     mlir::registerDialect<plier::PlierDialect>();
     mlir::MLIRContext context;
     auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
-    CompilerContext::Settings settings;
-    settings.verify = true;
-    settings.pass_statistics = false;
-    settings.pass_timings = false;
-    settings.ir_printing = false;
-    CompilerContext compiler(context, settings);
+    CompilerContext compiler(context, get_settings(compilation_context["compiler_settings"]));
     compiler.run(mod);
     return gen_ll_module(mod);
 }

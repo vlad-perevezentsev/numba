@@ -495,6 +495,7 @@ class MlirBackend(LoweringPass):
             fn_name = fndesc.mangled_name
 
         ctx = {}
+        ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': False}
         ctx['typemap'] = lambda op: state.typemap[op.name]
         ctx['fnargs'] = lambda: state.args
         ctx['fnname'] = lambda: fn_name
