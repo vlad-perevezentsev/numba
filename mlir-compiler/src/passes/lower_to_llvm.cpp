@@ -182,6 +182,13 @@ class CheckForPlierTypes :
         markAllAnalysesPreserved();
         getOperation()->walk([&](mlir::Operation* op)
         {
+            if (op->getName().getDialect() == plier::PlierDialect::getDialectNamespace())
+            {
+                op->emitOpError(": not all plier ops were translated\n");
+                signalPassFailure();
+                return;
+            }
+
             auto check_type = [](mlir::Type type)
             {
                 return type.isa<plier::PyType>();
