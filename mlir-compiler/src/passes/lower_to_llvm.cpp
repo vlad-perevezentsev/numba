@@ -14,6 +14,8 @@
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 
+#include "plier/dialect.hpp"
+
 #include "utils.hpp"
 
 namespace
@@ -52,7 +54,9 @@ struct LLVMTypeHelper
 
     mlir::LLVM::LLVMType ptr(mlir::Type type)
     {
+        assert(static_cast<bool>(type));
         auto ll_type = type_converter.convertType(type).cast<mlir::LLVM::LLVMType>();
+        assert(static_cast<bool>(ll_type));
         return mlir::LLVM::LLVMPointerType::get(ll_type);
     }
 
@@ -138,6 +142,7 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
             auto addr = op.getParentRegion()->front().getArgument(0);
             auto val = op.getOperand(0);
             auto ll_ret_type = type_converter.convertType(val.getType());
+            assert(static_cast<bool>(ll_ret_type));
             auto ll_val = rewriter.create<mlir::LLVM::BitcastOp>(op.getLoc(), ll_ret_type, val); // TODO: hack to make verifier happy
             rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), ll_val, addr);
             insert_ret();
@@ -169,26 +174,26 @@ struct RemoveBitcasts : public mlir::OpRewritePattern<mlir::LLVM::BitcastOp>
     }
 };
 
-template <typename PassT>
-struct LLVMLowererBase : public mlir::PassWrapper<PassT, mlir::FunctionPass>
+class CheckForPlierTypes :
+    public mlir::PassWrapper<CheckForPlierTypes, mlir::OperationPass<void>>
 {
-    virtual void getDependentDialects(
-        mlir::DialectRegistry &registry) const override
+    void runOnOperation() override
     {
-        registry.insert<mlir::StandardOpsDialect>();
-        registry.insert<mlir::LLVM::LLVMDialect>();
-    }
-
-    void runOnFunction() override final
-    {
-        LLVMTypeHelper type_helper(getContext());
-
-        mlir::OwningRewritePatternList patterns;
-        auto apply_conv = [&]()
+        markAllAnalysesPreserved();
+        getOperation()->walk([&](mlir::Operation* op)
         {
-            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-        };
-        static_cast<PassT*>(this)->run(type_helper, patterns, apply_conv);
+            auto check_type = [](mlir::Type type)
+            {
+                return type.isa<plier::PyType>();
+            };
+
+            if (llvm::any_of(op->getResultTypes(), check_type) ||
+                llvm::any_of(op->getOperandTypes(), check_type))
+            {
+                op->emitOpError(": not all plier types were translated\n");
+                signalPassFailure();
+            }
+        });
     }
 };
 
@@ -274,6 +279,7 @@ struct PostLLVMLowering :
 
 void populate_lower_to_llvm_pipeline(mlir::PassManager& pm)
 {
+    pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addPass(std::make_unique<PreLLVMLowering>());
     pm.addPass(mlir::createLowerToLLVMPass(getLLVMOptions()));
     pm.addPass(std::make_unique<PostLLVMLowering>());

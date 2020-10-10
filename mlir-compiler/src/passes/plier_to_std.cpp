@@ -48,9 +48,10 @@ mlir::Type map_bool_type(plier::PyType type)
 
 mlir::Type map_plier_type(mlir::Type type)
 {
+    assert(static_cast<bool>(type));
     if (!type.isa<plier::PyType>())
     {
-        return {};
+        return nullptr;
     }
     auto ptype = type.cast<plier::PyType>();
     using func_t = mlir::Type(*)(plier::PyType);
@@ -67,7 +68,7 @@ mlir::Type map_plier_type(mlir::Type type)
             return t;
         }
     }
-    return {};
+    return nullptr;
 }
 
 bool is_supported_type(mlir::Type type)
@@ -78,7 +79,7 @@ bool is_supported_type(mlir::Type type)
 mlir::Type map_type(mlir::Type type)
 {
     auto new_type = is_supported_type(type) ? type : map_plier_type(type);
-    return mlir::Type() == new_type ? type : new_type;
+    return static_cast<bool>(new_type) ? new_type : type;
 };
 
 bool convert_func_sig(mlir::FuncOp func)
