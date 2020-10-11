@@ -67,14 +67,10 @@ def BinOp : Plier_Op<"binop", []> {
 
 def CastOp : Plier_Op<"cast", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
     let results = (outs AnyType);
     let hasFolder = 1;
-
-    let builders = [
-        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value val">
-    ];
 }
 
 def PyCallOp : Plier_Op<"call", []> {

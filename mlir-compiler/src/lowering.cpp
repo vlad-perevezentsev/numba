@@ -137,7 +137,7 @@ struct plier_lowerer
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         typemap = compilation_context["typemap"];
         auto name = compilation_context["fnname"]().cast<std::string>();
-        auto typ = get_func_type(compilation_context["fnargs"]);
+        auto typ = get_func_type(compilation_context["fnargs"], compilation_context["restype"]);
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         lower_func_body(func_ir);
         mod.push_back(func);
@@ -276,7 +276,7 @@ private:
         using func_t = mlir::Value (plier_lowerer::*)(const py::handle&);
         const std::pair<mlir::StringRef, func_t> handlers[] = {
             {"binop", &plier_lowerer::lower_binop},
-            {"cast", &plier_lowerer::lower_simple<plier::CastOp>},
+            {"cast", &plier_lowerer::lower_cast},
             {"call", &plier_lowerer::lower_call},
             {"phi", &plier_lowerer::lower_phi},
             {"build_tuple", &plier_lowerer::lower_build_tuple},
@@ -301,6 +301,13 @@ private:
     {
         auto value = loadvar(inst.attr("value"));
         return builder.create<T>(builder.getUnknownLoc(), value);
+    }
+
+    mlir::Value lower_cast(const py::handle& inst)
+    {
+        auto value = loadvar(inst.attr("value"));
+        auto res_type = get_type(current_instr.attr("target"));
+        return builder.create<plier::CastOp>(builder.getUnknownLoc(), res_type, value);
     }
 
     mlir::Value lower_static_getitem(const py::handle& inst)
@@ -418,20 +425,14 @@ private:
     void retvar(const py::handle& inst)
     {
         auto var = loadvar(inst);
-        builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
         auto func_type = func.getType();
         auto ret_type = func_type.getResult(0);
-        auto new_ret_type = var.getType();
-        if (ret_type != new_ret_type)
+        auto var_type = var.getType();
+        if (ret_type != var_type)
         {
-            auto def_type = plier::PyType::getUndefined(&ctx);
-            if (ret_type != def_type)
-            {
-                report_error(llvm::Twine("Conflicting return types: ") + to_str(ret_type) + " and " + to_str(new_ret_type));
-            }
-            auto new_func_type = mlir::FunctionType::get(func_type.getInputs(), new_ret_type, &ctx);
-            func.setType(new_func_type);
+            var = builder.create<plier::CastOp>(builder.getUnknownLoc(), ret_type, var);
         }
+        builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
     }
 
     void branch(const py::handle& cond, const py::handle& tr, const py::handle& fl)
@@ -458,9 +459,9 @@ private:
         report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
-    mlir::FunctionType get_func_type(const py::handle& fnargs)
+    mlir::FunctionType get_func_type(const py::handle& fnargs, const py::handle& restype)
     {
-        auto ret = plier::PyType::getUndefined(&ctx);
+        auto ret = get_obj_type(restype());
         llvm::SmallVector<mlir::Type, 8> args;
         for (auto arg : fnargs())
         {

@@ -143,19 +143,19 @@ bool convert_func_sig(mlir::FuncOp func)
 }
 
 template<typename T>
-void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type)
+void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
 {
     assert(nullptr != op);
-    rewriter.replaceOpWithNewOp<T>(op, new_type, op->getOperands());
+    rewriter.replaceOpWithNewOp<T>(op, new_type, operands);
 }
 
 template<typename T, uint64_t Pred>
-void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/)
+void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/, mlir::ValueRange operands)
 {
     assert(nullptr != op);
     auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(64, op->getContext()), Pred);
     mlir::Type new_type = mlir::IntegerType::get(1, op->getContext());
-    rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, op->getOperand(0), op->getOperand(1));
+    rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, operands[0], operands[1]);
 }
 
 bool is_int(mlir::Type type)
@@ -184,6 +184,108 @@ struct ConstOpLowering : public mlir::OpRewritePattern<plier::ConstOp>
     }
 };
 
+mlir::Type coerce(mlir::Type type0, mlir::Type type1)
+{
+    // TODO: proper rules
+    assert(type0 != type1);
+    auto get_bits_count = [](mlir::Type type)->unsigned
+    {
+        if (type.isa<mlir::IntegerType>())
+        {
+            return type.cast<mlir::IntegerType>().getWidth();
+        }
+        if (type.isa<mlir::Float16Type>())
+        {
+            return 11;
+        }
+        if (type.isa<mlir::Float32Type>())
+        {
+            return 24;
+        }
+        if (type.isa<mlir::Float64Type>())
+        {
+            return 53;
+        }
+        llvm_unreachable("Unhandled type");
+    };
+    auto f0 = is_float(type0);
+    auto f1 = is_float(type1);
+    if (f0 && !f1)
+    {
+        return type0;
+    }
+    if (!f0 && f1)
+    {
+        return type1;
+    }
+    return get_bits_count(type0) < get_bits_count(type1) ? type1 : type0;
+}
+
+template <bool Signed>
+mlir::Value int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    auto src_bits = val.getType().cast<mlir::IntegerType>().getWidth();
+    auto dst_bits = dst_type.cast<mlir::IntegerType>().getWidth();
+    assert(src_bits != dst_bits);
+    if (dst_bits > src_bits)
+    {
+        using T = std::conditional_t<Signed, mlir::SignExtendIOp, mlir::ZeroExtendIOp>;
+        return rewriter.create<T>(val.getLoc(), val, dst_type);
+    }
+    else
+    {
+        return rewriter.create<mlir::TruncateIOp>(val.getLoc(), val, dst_type);
+    }
+}
+
+template <bool Signed>
+mlir::Value int_float_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    using T = std::conditional_t<Signed, mlir::SIToFPOp, mlir::UIToFPOp>;
+    return rewriter.create<T>(val.getLoc(), val, dst_type);
+}
+
+template <bool Signed>
+mlir::Value float_int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    using T = std::conditional_t<Signed, mlir::FPToSIOp, mlir::FPToUIOp>;
+    return rewriter.create<T>(val.getLoc(), val, dst_type);
+}
+
+mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    auto src_type = val.getType();
+    if (src_type == dst_type)
+    {
+        return val;
+    }
+
+    struct Handler
+    {
+        using selector_t = bool(*)(mlir::Type);
+        using cast_op_t = mlir::Value(*)(mlir::Type, mlir::Value, mlir::PatternRewriter&);
+        selector_t src;
+        selector_t dst;
+        cast_op_t cast_op;
+    };
+
+    const Handler handlers[] = {
+        {&is_int, &is_int, &int_cast<true>},
+        {&is_int, &is_float, &int_float_cast<true>},
+        {&is_float, &is_int, &float_int_cast<true>},
+    };
+
+    for (auto& h : handlers)
+    {
+        if (h.src(src_type) && h.dst(dst_type))
+        {
+            return h.cast_op(dst_type, val, rewriter);
+        }
+    }
+
+    llvm_unreachable("Unhandled cast");
+}
+
 struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
 {
     using mlir::OpRewritePattern<plier::BinOp>::OpRewritePattern;
@@ -199,18 +301,21 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             return mlir::failure();
         }
         mlir::Type final_type;
+        std::array<mlir::Value, 2> operands;
         if (type0 != type1)
         {
-            // TODO: coerce
-            return mlir::failure();
+            final_type = coerce(type0, type1);
+            operands = {do_cast(final_type, op.getOperand(0), rewriter),
+                        do_cast(final_type, op.getOperand(1), rewriter)};
         }
         else
         {
             final_type = type0;
+            operands = {op.getOperand(0), op.getOperand(1)};
         }
         assert(static_cast<bool>(final_type));
 
-        using func_t = void(*)(mlir::Operation*, mlir::PatternRewriter&, mlir::Type);
+        using func_t = void(*)(mlir::Operation*, mlir::PatternRewriter&, mlir::Type, mlir::ValueRange);
         struct OpDesc
         {
             llvm::StringRef type;
@@ -244,7 +349,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {
                 if (h.type == op.op())
                 {
-                    (h.*mem)(op, rewriter, final_type);
+                    (h.*mem)(op, rewriter, final_type, operands);
                     return mlir::success();
                 }
             }
@@ -263,55 +368,6 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         return mlir::failure();
     }
 };
-
-template <bool Signed>
-mlir::Value int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
-{
-    auto src_bits = val.getType().cast<mlir::IntegerType>().getWidth();
-    auto dst_bits = dst_type.cast<mlir::IntegerType>().getWidth();
-    assert(src_bits != dst_bits);
-    if (dst_bits > src_bits)
-    {
-        using T = std::conditional_t<Signed, mlir::SignExtendIOp, mlir::ZeroExtendIOp>;
-        return rewriter.create<T>(val.getLoc(), val, dst_type);
-    }
-    else
-    {
-        return rewriter.create<mlir::TruncateIOp>(val.getLoc(), val, dst_type);
-    }
-}
-
-mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
-{
-    auto src_type = val.getType();
-    if (src_type == dst_type)
-    {
-        return val;
-    }
-
-    struct Handler
-    {
-        using selector_t = bool(*)(mlir::Type);
-        using cast_op_t = mlir::Value(*)(mlir::Type, mlir::Value, mlir::PatternRewriter&);
-        selector_t src;
-        selector_t dst;
-        cast_op_t cast_op;
-    };
-
-    const Handler handlers[] = {
-        {&is_int, &is_int, &int_cast<true>},
-    };
-
-    for (auto& h : handlers)
-    {
-        if (h.src(src_type) && h.dst(dst_type))
-        {
-            return h.cast_op(dst_type, val, rewriter);
-        }
-    }
-
-    return nullptr;
-}
 
 mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& rewriter)
 {
@@ -374,6 +430,24 @@ struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
     }
 };
 
+struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
+{
+    using mlir::OpRewritePattern<plier::CastOp>::OpRewritePattern;
+
+    mlir::LogicalResult
+    matchAndRewrite(plier::CastOp op, mlir::PatternRewriter& rewriter) const override
+    {
+        auto src_type = op.getOperand().getType();
+        auto dst_type = op.getType();
+        if (is_supported_type(src_type) && is_supported_type(dst_type))
+        {
+            auto new_op = do_cast(dst_type, op.getOperand(), rewriter);
+            rewriter.replaceOp(op, new_op);
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
 
 struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 {
@@ -457,7 +531,7 @@ void PlierToStdPass::runOnOperation()
     patterns.insert<FuncOpSignatureConversion,
                     OpTypeConversion>(&getContext(), type_converter);
     patterns.insert<ConstOpLowering, BinOpLowering,
-                    CallOpLowering>(&getContext());
+                    CallOpLowering, CastOpLowering>(&getContext());
 
     auto apply_conv = [&]()
     {

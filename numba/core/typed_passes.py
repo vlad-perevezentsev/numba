@@ -498,6 +498,7 @@ class MlirBackend(LoweringPass):
         ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': False}
         ctx['typemap'] = lambda op: state.typemap[op.name]
         ctx['fnargs'] = lambda: state.args
+        ctx['restype'] = lambda: state.return_type
         ctx['fnname'] = lambda: fn_name
         import mlir_compiler
         mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)

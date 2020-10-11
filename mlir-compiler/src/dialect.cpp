@@ -108,12 +108,6 @@ void BinOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                  rhs, op);
 }
 
-void CastOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
-                   mlir::Value val) {
-    CastOp::build(builder, state, PyType::getUndefined(state.getContext()),
-                  val);
-}
-
 mlir::OpFoldResult CastOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
 {
     auto op_type = getOperand().getType();
