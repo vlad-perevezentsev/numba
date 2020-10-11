@@ -2,7 +2,7 @@
 
 namespace mlir
 {
-class PassManager;
+class OpPassManager;
 }
 
-void populate_lower_to_llvm_pipeline(mlir::PassManager& pm);
+void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm);

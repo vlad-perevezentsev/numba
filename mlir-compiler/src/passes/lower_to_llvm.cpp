@@ -282,9 +282,10 @@ struct PostLLVMLowering :
         }
     }
 };
+
 }
 
-void populate_lower_to_llvm_pipeline(mlir::PassManager& pm)
+void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addPass(std::make_unique<PreLLVMLowering>());
