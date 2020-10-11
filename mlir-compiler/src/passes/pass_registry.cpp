@@ -79,6 +79,7 @@ void pass_registry::populate_pass_manager(mlir::OpPassManager& pm) const
         llvm::SmallVector<llvm::StringRef, 4> prev_pipelines;
         llvm::SmallVector<llvm::StringRef, 4> next_pipelines;
         pipeline_funt_t func = nullptr;
+        PipelineInfo* next = nullptr;
         bool visited = false;
     };
 
@@ -137,19 +138,33 @@ void pass_registry::populate_pass_manager(mlir::OpPassManager& pm) const
     }
 
     // toposort
+    PipelineInfo* first_pipeline = nullptr;
     for (auto name : pipelines_ordered)
     {
         auto iter_func = [&](const PipelineInfo& elem, auto func)
         {
             for (auto prev : elem.prev_pipelines)
             {
+                if (get_id(prev) == get_id(name))
+                {
+                    report_error(llvm::Twine("Pipeline depends on itself: ") + name);
+                }
                 func(get_pipeline_info(prev));
             }
         };
-        auto visit_func = [&](const PipelineInfo& elem)
+        auto visit_func = [&](PipelineInfo& elem)
         {
-            elem.func(pm);
+            assert(nullptr == elem.next);
+            elem.next = first_pipeline;
+            first_pipeline = &elem;
         };
         topo_visit(get_pipeline_info(name), iter_func, visit_func);
     }
+
+    for (auto current = first_pipeline; nullptr != first_pipeline;
+         first_pipeline = first_pipeline->next)
+     {
+        assert(nullptr != current);
+        current->func(pm);
+     }
 }
