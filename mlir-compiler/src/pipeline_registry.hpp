@@ -13,11 +13,11 @@ class OpPassManager;
 }
 
 
-class pass_registry
+class PipelineRegistry
 {
 public:
-    pass_registry() = default;
-    pass_registry(const pass_registry&) = delete;
+    PipelineRegistry() = default;
+    PipelineRegistry(const PipelineRegistry&) = delete;
 
     using pipeline_funt_t = void(*)(mlir::OpPassManager&);
     using registry_entry_sink_t = void(

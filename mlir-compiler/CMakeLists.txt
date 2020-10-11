@@ -25,16 +25,16 @@ set(SOURCES_LIST
     src/lowering.cpp
     src/module.cpp
     src/passes/lower_to_llvm.cpp
-    src/passes/pass_registry.cpp
     src/passes/plier_to_std.cpp
+    src/pipeline_registry.cpp
     src/utils.cpp
     )
 set(HEADERS_LIST
     src/compiler.hpp
     src/lowering.hpp
     src/passes/lower_to_llvm.hpp
-    src/passes/pass_registry.hpp
     src/passes/plier_to_std.hpp
+    src/pipeline_registry.hpp
     src/utils.hpp
     include/plier/dialect.hpp
     include/plier/PlierOps.td

@@ -1,4 +1,4 @@
-#include "pass_registry.hpp"
+#include "pipeline_registry.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/Allocator.h>
@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
-void pass_registry::register_pipeline(pass_registry::registry_entry_t func)
+void PipelineRegistry::register_pipeline(PipelineRegistry::registry_entry_t func)
 {
     assert(nullptr != func);
     pipelines.push_back(std::move(func));
@@ -34,7 +34,7 @@ void topo_visit(T& elem, IterF&& iter_func, VisitF&& func)
 }
 }
 
-void pass_registry::populate_pass_manager(mlir::OpPassManager& pm) const
+void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
 {
     llvm::BumpPtrAllocator allocator;
     llvm::UniqueStringSaver string_set(allocator);
