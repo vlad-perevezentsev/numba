@@ -3,7 +3,9 @@
 #include <mlir/IR/Dialect.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/Passes.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -547,7 +549,8 @@ void PlierToStdPass::runOnOperation()
 
 }
 
-std::unique_ptr<mlir::Pass> createPlierToStdPass()
+void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
 {
-    return std::make_unique<PlierToStdPass>();
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(std::make_unique<PlierToStdPass>());
 }

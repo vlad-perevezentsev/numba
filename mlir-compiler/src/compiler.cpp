@@ -4,12 +4,9 @@
 #include <mlir/IR/Function.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/Passes.h>
-#include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
 
 #include <mlir/IR/Diagnostics.h>
 
-#include <llvm/ADT/ScopeExit.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include "utils.hpp"
@@ -24,9 +21,7 @@ public:
                         const CompilerContext::Settings& settings):
         pm(&ctx, settings.verify)
     {
-        pm.addPass(mlir::createCanonicalizerPass());
-        pm.addPass(createPlierToStdPass());
-
+        populate_plier_to_std_pipeline(pm);
         populate_lower_to_llvm_pipeline(pm);
 
         if (settings.pass_statistics)

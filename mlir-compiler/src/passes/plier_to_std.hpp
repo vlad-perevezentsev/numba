@@ -1,10 +1,8 @@
 #pragma once
 
-#include <memory>
-
 namespace mlir
 {
-class Pass;
+class OpPassManager;
 }
 
-std::unique_ptr<mlir::Pass> createPlierToStdPass();
+void populate_plier_to_std_pipeline(mlir::OpPassManager& pm);
