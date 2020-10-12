@@ -26,10 +26,12 @@ void topo_visit(T& elem, IterF&& iter_func, VisitF&& func)
         return;
     }
     elem.visited = true;
+    elem.iterating = true;
     iter_func(elem, [&](T& next)
     {
         topo_visit(next, std::forward<IterF>(iter_func), std::forward<VisitF>(func));
     });
+    elem.iterating = false;
     func(elem);
 }
 }
@@ -81,6 +83,7 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
         pipeline_funt_t func = nullptr;
         PipelineInfo* next = nullptr;
         bool visited = false;
+        bool iterating = false;
     };
 
     std::unordered_map<name_id, PipelineInfo> pipelines_map;
@@ -143,12 +146,12 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
     {
         auto iter_func = [&](const PipelineInfo& elem, auto func)
         {
+            if (elem.iterating)
+            {
+                report_error(llvm::Twine("Pipeline depends on itself: ") + elem.name);
+            }
             for (auto prev : elem.prev_pipelines)
             {
-                if (get_id(prev) == get_id(name))
-                {
-                    report_error(llvm::Twine("Pipeline depends on itself: ") + name);
-                }
                 func(get_pipeline_info(prev));
             }
         };
