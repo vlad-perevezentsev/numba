@@ -8,6 +8,7 @@ class MLIRContext;
 class ModuleOp;
 }
 
+class PipelineRegistry;
 class CompilerContext
 {
 public:
@@ -21,7 +22,8 @@ public:
 
     class CompilerContextImpl;
 
-    CompilerContext(mlir::MLIRContext& ctx, const Settings& settings);
+    CompilerContext(mlir::MLIRContext& ctx, const Settings& settings,
+                    const PipelineRegistry& registry);
     ~CompilerContext();
 
     CompilerContext(CompilerContext&&) = default;

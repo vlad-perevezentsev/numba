@@ -16,6 +16,8 @@
 
 #include "plier/dialect.hpp"
 
+#include "pipeline_registry.hpp"
+
 #include "utils.hpp"
 
 namespace
@@ -283,12 +285,20 @@ struct PostLLVMLowering :
     }
 };
 
-}
-
 void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addPass(std::make_unique<PreLLVMLowering>());
     pm.addPass(mlir::createLowerToLLVMPass(getLLVMOptions()));
     pm.addPass(std::make_unique<PostLLVMLowering>());
+}
+}
+
+
+void register_lower_to_llvm_pipeline(PipelineRegistry& registry)
+{
+    registry.register_pipeline([](auto sink)
+    {
+        sink("lower_to_llvm", {"lowering"}, {"terminate"}, &populate_lower_to_llvm_pipeline);
+    });
 }

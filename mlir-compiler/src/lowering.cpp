@@ -19,7 +19,12 @@
 #include "plier/dialect.hpp"
 
 #include "compiler.hpp"
+#include "pipeline_registry.hpp"
 #include "utils.hpp"
+
+#include "passes/base_pipeline.hpp"
+#include "passes/plier_to_std.hpp"
+#include "passes/lower_to_llvm.hpp"
 
 namespace py = pybind11;
 namespace
@@ -570,6 +575,13 @@ py::bytes gen_ll_module(mlir::ModuleOp mod)
 //    ll_mod->dump();
     return serialize_mod(*ll_mod);
 }
+
+void create_pipeline(PipelineRegistry& registry)
+{
+    register_base_pipeline(registry);
+    register_lower_to_llvm_pipeline(registry);
+    register_plier_to_std_pipeline(registry);
+}
 }
 
 py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
@@ -578,7 +590,10 @@ py::bytes lower_function(const py::object& compilation_context, const py::object
     mlir::registerDialect<plier::PlierDialect>();
     mlir::MLIRContext context;
     auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
-    CompilerContext compiler(context, get_settings(compilation_context["compiler_settings"]));
+    PipelineRegistry registry;
+    create_pipeline(registry);
+    auto settings = get_settings(compilation_context["compiler_settings"]);
+    CompilerContext compiler(context, settings, registry);
     compiler.run(mod);
     return gen_ll_module(mod);
 }

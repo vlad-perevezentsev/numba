@@ -26,12 +26,10 @@ void topo_visit(T& elem, IterF&& iter_func, VisitF&& func)
         return;
     }
     elem.visited = true;
-    elem.iterating = true;
     iter_func(elem, [&](T& next)
     {
         topo_visit(next, std::forward<IterF>(iter_func), std::forward<VisitF>(func));
     });
-    elem.iterating = false;
     func(elem);
 }
 }
@@ -47,7 +45,7 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
         assert(!name.empty());
         return name.data();
     };
-    std::set<llvm::StringRef> pipelines_ordered; // sorted map to make order consistent
+    std::set<llvm::StringRef> pipelines_ordered; // sorted set to make order consistent
 
     auto get_pipeline = [&](llvm::StringRef name)->llvm::StringRef
     {
@@ -60,12 +58,13 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
         return str;
     };
 
-    struct IdSet : protected llvm::SmallVector<name_id, 4>
+    struct PipelineSet : protected llvm::SmallVector<llvm::StringRef, 4>
     {
-        using Base = llvm::SmallVector<name_id, 4>;
+        using Base = llvm::SmallVector<llvm::StringRef, 4>;
         using Base::begin;
         using Base::end;
-        void push_back(name_id id)
+        using Base::value_type;
+        void push_back(llvm::StringRef id)
         {
             auto it = std::equal_range(begin(), end(), id);
             if (it.first == it.second)
@@ -78,8 +77,8 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
     struct PipelineInfo
     {
         llvm::StringRef name;
-        llvm::SmallVector<llvm::StringRef, 4> prev_pipelines;
-        llvm::SmallVector<llvm::StringRef, 4> next_pipelines;
+        PipelineSet prev_pipelines;
+        PipelineSet next_pipelines;
         pipeline_funt_t func = nullptr;
         PipelineInfo* next = nullptr;
         bool visited = false;
@@ -142,32 +141,44 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
 
     // toposort
     PipelineInfo* first_pipeline = nullptr;
+    PipelineInfo* current_pipeline = nullptr;
     for (auto name : pipelines_ordered)
     {
-        auto iter_func = [&](const PipelineInfo& elem, auto func)
+        auto iter_func = [&](PipelineInfo& elem, auto func)
         {
-            if (elem.iterating)
+            elem.iterating = true;
+            for (auto it : elem.prev_pipelines)
             {
-                report_error(llvm::Twine("Pipeline depends on itself: ") + elem.name);
+                auto& info = get_pipeline_info(it);
+                if (info.iterating)
+                {
+                    report_error(llvm::Twine("Pipeline depends on itself: ") + elem.name);
+                }
+                func(info);
             }
-            for (auto prev : elem.prev_pipelines)
-            {
-                func(get_pipeline_info(prev));
-            }
+            elem.iterating = false;
         };
         auto visit_func = [&](PipelineInfo& elem)
         {
             assert(nullptr == elem.next);
-            elem.next = first_pipeline;
-            first_pipeline = &elem;
+            auto current = &elem;
+            if (nullptr == first_pipeline)
+            {
+                first_pipeline = current;
+            }
+            else
+            {
+                assert(nullptr != current_pipeline);
+                current_pipeline->next = current;
+            }
+            current_pipeline = current;
         };
         topo_visit(get_pipeline_info(name), iter_func, visit_func);
     }
 
-    for (auto current = first_pipeline; nullptr != first_pipeline;
-         first_pipeline = first_pipeline->next)
+    for (auto current = first_pipeline; nullptr != current;
+         current = current->next)
      {
-        assert(nullptr != current);
         current->func(pm);
      }
 }

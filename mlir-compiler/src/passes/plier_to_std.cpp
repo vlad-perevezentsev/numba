@@ -11,6 +11,8 @@
 
 #include "plier/dialect.hpp"
 
+#include "pipeline_registry.hpp"
+
 namespace
 {
 mlir::Type map_int_type(plier::PyType type)
@@ -547,10 +549,18 @@ void PlierToStdPass::runOnOperation()
     }
 }
 
-}
-
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(std::make_unique<PlierToStdPass>());
+}
+}
+
+
+void register_plier_to_std_pipeline(PipelineRegistry& registry)
+{
+    registry.register_pipeline([](auto sink)
+    {
+        sink("plier_to_std", {"init"}, {"lowering"}, &populate_plier_to_std_pipeline);
+    });
 }

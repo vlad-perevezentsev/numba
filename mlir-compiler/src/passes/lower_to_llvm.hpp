@@ -1,8 +1,5 @@
 #pragma once
 
-namespace mlir
-{
-class OpPassManager;
-}
+class PipelineRegistry;
 
-void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm);
+void register_lower_to_llvm_pipeline(PipelineRegistry& registry);

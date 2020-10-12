@@ -11,18 +11,17 @@
 
 #include "utils.hpp"
 
-#include "passes/plier_to_std.hpp"
-#include "passes/lower_to_llvm.hpp"
+#include "pipeline_registry.hpp"
 
 class CompilerContext::CompilerContextImpl
 {
 public:
     CompilerContextImpl(mlir::MLIRContext& ctx,
-                        const CompilerContext::Settings& settings):
+                        const CompilerContext::Settings& settings,
+                        const PipelineRegistry& registry):
         pm(&ctx, settings.verify)
     {
-        populate_plier_to_std_pipeline(pm);
-        populate_lower_to_llvm_pipeline(pm);
+        registry.populate_pass_manager(pm);
 
         if (settings.pass_statistics)
         {
@@ -64,8 +63,10 @@ private:
     mlir::PassManager pm;
 };
 
-CompilerContext::CompilerContext(mlir::MLIRContext& ctx, const Settings& settings):
-    impl(std::make_unique<CompilerContextImpl>(ctx, settings))
+CompilerContext::CompilerContext(mlir::MLIRContext& ctx,
+                                 const Settings& settings,
+                                 const PipelineRegistry& registry):
+    impl(std::make_unique<CompilerContextImpl>(ctx, settings, registry))
 {
 
 }

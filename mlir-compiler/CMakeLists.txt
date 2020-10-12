@@ -24,6 +24,7 @@ set(SOURCES_LIST
     src/dialect.cpp
     src/lowering.cpp
     src/module.cpp
+    src/passes/base_pipeline.cpp
     src/passes/lower_to_llvm.cpp
     src/passes/plier_to_std.cpp
     src/pipeline_registry.cpp
@@ -32,6 +33,7 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     src/compiler.hpp
     src/lowering.hpp
+    src/passes/base_pipeline.hpp
     src/passes/lower_to_llvm.hpp
     src/passes/plier_to_std.hpp
     src/pipeline_registry.hpp

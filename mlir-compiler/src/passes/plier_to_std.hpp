@@ -1,8 +1,5 @@
 #pragma once
 
-namespace mlir
-{
-class OpPassManager;
-}
+class PipelineRegistry;
 
-void populate_plier_to_std_pipeline(mlir::OpPassManager& pm);
+void register_plier_to_std_pipeline(PipelineRegistry& registry);
