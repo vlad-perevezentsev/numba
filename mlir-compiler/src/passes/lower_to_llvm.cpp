@@ -16,6 +16,7 @@
 
 #include "plier/dialect.hpp"
 
+#include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
 
 #include "utils.hpp"
@@ -299,6 +300,7 @@ void register_lower_to_llvm_pipeline(PipelineRegistry& registry)
 {
     registry.register_pipeline([](auto sink)
     {
-        sink("lower_to_llvm", {"lowering"}, {"terminate"}, &populate_lower_to_llvm_pipeline);
+        auto stage = get_lower_lowering_stage();
+        sink("lower_to_llvm", {stage.begin}, {stage.end}, &populate_lower_to_llvm_pipeline);
     });
 }

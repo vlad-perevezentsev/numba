@@ -92,6 +92,7 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
                     llvm::ArrayRef<llvm::StringRef> next_pipelines,
                     pipeline_funt_t func)
     {
+        assert(!pipeline_name.empty());
         assert(nullptr != func);
         auto i = get_pipeline(pipeline_name);
         auto it = pipelines_map.insert({get_id(i), {}});

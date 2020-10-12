@@ -11,6 +11,7 @@
 
 #include "plier/dialect.hpp"
 
+#include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
 
 namespace
@@ -561,6 +562,7 @@ void register_plier_to_std_pipeline(PipelineRegistry& registry)
 {
     registry.register_pipeline([](auto sink)
     {
-        sink("plier_to_std", {"init"}, {"lowering"}, &populate_plier_to_std_pipeline);
+        auto stage = get_high_lowering_stage();
+        sink("plier_to_std", {stage.begin}, {stage.end}, &populate_plier_to_std_pipeline);
     });
 }
