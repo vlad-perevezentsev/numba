@@ -136,22 +136,26 @@ def IternextOp : Plier_Op<"iternext", []> {
 ];
 }
 
-def PairfirstOp : Plier_Op<"pair_first", []> {
+def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
     let arguments = (ins
-                     AnyType:$value);
+                     AnyType:$value,
+                     Optional<AnyType>:$second_val);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
 ];
 }
 
-def PairsecondOp : Plier_Op<"pair_second", []> {
+def PairsecondOp : Plier_Op<"pair_second", [NoSideEffect]> {
     let arguments = (ins
-                     AnyType:$value);
+                     AnyType:$value,
+                     Optional<AnyType>:$second_val);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -161,10 +165,6 @@ def PairsecondOp : Plier_Op<"pair_second", []> {
 def DelOp : Plier_Op<"del", []> {
     let arguments = (ins
                      AnyType:$value);
-
-//    let builders = [
-//        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value val">
-//    ];
 }
 
 #endif // PLIER_OPS

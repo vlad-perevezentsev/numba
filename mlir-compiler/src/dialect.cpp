@@ -175,11 +175,29 @@ void PairfirstOp::build(OpBuilder &builder, OperationState &state,
                        value);
 }
 
+mlir::OpFoldResult PairfirstOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+{
+    if (getNumOperands() == 2)
+    {
+        return getOperand(0);
+    }
+    return nullptr;
+}
+
 void PairsecondOp::build(OpBuilder &builder, OperationState &state,
                             ::mlir::Value value)
 {
     PairsecondOp::build(builder, state,
                         PyType::getUndefined(state.getContext()), value);
+}
+
+mlir::OpFoldResult PairsecondOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+{
+    if (getNumOperands() == 2)
+    {
+        return getOperand(1);
+    }
+    return nullptr;
 }
 
 }
