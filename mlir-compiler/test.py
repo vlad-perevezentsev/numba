@@ -78,6 +78,7 @@ test(jump, (1,8))
 test(jump, (7,8))
 test(call, (1,2,3))
 test(tuple, (1,2,3))
+test(tuple, (1,2.0,3))
 test(loop, (8,))
 
 print(f'Tests passed: {_tests_passes}/{_tests_total}')

@@ -332,7 +332,7 @@ private:
         {
             args.push_back(loadvar(item));
         }
-        return builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args);
+        return builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args).getResult(0);
     }
 
     mlir::Value lower_phi(const py::handle& expr)

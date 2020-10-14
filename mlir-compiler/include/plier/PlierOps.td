@@ -89,11 +89,12 @@ def PyCallOp : Plier_Op<"call", []> {
   ];
 }
 
-def BuildTupleOp : Plier_Op<"build_tuple", []> {
+def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
     let arguments = (ins
                      Variadic<AnyType>:$args);
 
-    let results = (outs AnyType);
+    let results = (outs Variadic<AnyType>);
+    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::ValueRange args">
@@ -107,6 +108,7 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
                      UI32Attr:$index);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, "

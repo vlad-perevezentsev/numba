@@ -145,6 +145,20 @@ void BuildTupleOp::build(OpBuilder &builder, OperationState &state,
                         PyType::getUndefined(state.getContext()), args);
 }
 
+mlir::LogicalResult BuildTupleOp::fold(
+    llvm::ArrayRef<mlir::Attribute> /*operands*/,
+    llvm::SmallVectorImpl<mlir::OpFoldResult> &results)
+{
+    auto res_types = getResultTypes();
+    auto args = getOperands();
+    if (res_types.size() == args.size())
+    {
+        std::copy(args.begin(), args.end(), std::back_inserter(results));
+        return mlir::success();
+    }
+    return mlir::failure();
+}
+
 void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
                             ::mlir::Value value, ::mlir::Value index_var,
                             unsigned int index)
@@ -152,6 +166,18 @@ void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
     StaticGetItemOp::build(builder, state,
                            PyType::getUndefined(state.getContext()),
                            value, index_var, index);
+}
+
+mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+{
+    auto index = this->index();
+    auto args = getOperands();
+    if ((index + 1) < args.size() && // skip last arg
+        args[index].getType() == getResult().getType())
+    {
+        return args[index];
+    }
+    return nullptr;
 }
 
 void GetiterOp::build(OpBuilder &builder, OperationState &state,

@@ -64,32 +64,70 @@ mlir::Type map_float_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 }
 
 mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name);
+bool map_type_helper(mlir::MLIRContext& ctx, llvm::StringRef& name, mlir::Type& ret)
+{
+    auto type = map_plier_type_name(ctx, name);
+    if (static_cast<bool>(type))
+    {
+        ret = type;
+        return true;
+    }
+    return false;
+}
 
 mlir::Type map_pair_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    if (!name.consume_front("pair<"))
+    mlir::Type first;
+    mlir::Type second;
+    if (name.consume_front("pair<") &&
+        map_type_helper(ctx, name, first) &&
+        name.consume_front(", ") &&
+        map_type_helper(ctx, name, second) &&
+        name.consume_front(">"))
+    {
+        return mlir::TupleType::get({first, second}, &ctx);
+    }
+    return nullptr;
+}
+
+mlir::Type map_unituple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
+{
+    mlir::Type type;
+    unsigned count = 0;
+    if (name.consume_front("UniTuple(") &&
+        map_type_helper(ctx, name, type) &&
+        name.consume_front(" x ") &&
+        !name.consumeInteger<unsigned>(10, count) &&
+        name.consume_front(")"))
+    {
+        llvm::SmallVector<mlir::Type, 8> types(count, type);
+        return mlir::TupleType::get(types, &ctx);
+    }
+    return nullptr;
+}
+
+mlir::Type map_tuple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
+{
+    if (!name.consume_front("Tuple("))
     {
         return nullptr;
     }
-    auto first = map_plier_type_name(ctx, name);
-    if (!static_cast<bool>(first))
+    llvm::SmallVector<mlir::Type, 8> types;
+    while (true)
     {
-        return nullptr;
+        if (name.consume_front(")"))
+        {
+            break;
+        }
+        auto type = map_plier_type_name(ctx, name);
+        if (!static_cast<bool>(type))
+        {
+            return nullptr;
+        }
+        types.push_back(type);
+        (void)name.consume_front(", ");
     }
-    if (!name.consume_front(", "))
-    {
-        return nullptr;
-    }
-    auto second = map_plier_type_name(ctx, name);
-    if (!static_cast<bool>(second))
-    {
-        return nullptr;
-    }
-    if (!name.consume_front(">"))
-    {
-        return nullptr;
-    }
-    return mlir::TupleType::get({first, second}, &ctx);
+    return mlir::TupleType::get(types, &ctx);
 }
 
 mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
@@ -101,6 +139,8 @@ mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
         &map_bool_type,
         &map_float_type,
         &map_pair_type,
+        &map_unituple_type,
+        &map_tuple_type,
     };
     for (auto h : handlers)
     {
@@ -519,7 +559,6 @@ struct ExpandTuples : public mlir::RewritePattern
 
         llvm::SmallVector<mlir::Operation*, 8> users(op->getUsers());
         llvm::SmallVector<mlir::Value, 8> new_operands;
-        op->dump();
         for (auto user_op : users)
         {
             new_operands.clear();
