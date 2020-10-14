@@ -63,6 +63,35 @@ mlir::Type map_float_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
     return nullptr;
 }
 
+mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name);
+
+mlir::Type map_pair_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
+{
+    if (!name.consume_front("pair<"))
+    {
+        return nullptr;
+    }
+    auto first = map_plier_type_name(ctx, name);
+    if (!static_cast<bool>(first))
+    {
+        return nullptr;
+    }
+    if (!name.consume_front(", "))
+    {
+        return nullptr;
+    }
+    auto second = map_plier_type_name(ctx, name);
+    if (!static_cast<bool>(second))
+    {
+        return nullptr;
+    }
+    if (!name.consume_front(">"))
+    {
+        return nullptr;
+    }
+    return mlir::TupleType::get({first, second}, &ctx);
+}
+
 mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
     using func_t = mlir::Type(*)(mlir::MLIRContext& ctx, llvm::StringRef& name);
@@ -70,7 +99,8 @@ mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
         &map_int_type,
         &map_int_literal_type,
         &map_bool_type,
-        &map_float_type
+        &map_float_type,
+        &map_pair_type,
     };
     for (auto h : handlers)
     {
