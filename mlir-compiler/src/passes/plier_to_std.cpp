@@ -484,6 +484,70 @@ struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
     }
 };
 
+mlir::Operation* change_op_ret_type(mlir::Operation* op,
+                                    mlir::PatternRewriter& rewriter,
+                                    llvm::ArrayRef<mlir::Type> types)
+{
+    assert(nullptr != op);
+    mlir::OperationState state(op->getLoc(), op->getName().getStringRef(),
+                                   op->getOperands(), types, op->getAttrs());
+    return rewriter.createOperation(state);
+}
+
+struct ExpandTuples : public mlir::RewritePattern
+{
+    ExpandTuples(mlir::MLIRContext* ctx):
+        RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()),
+        dialect(ctx->getLoadedDialect<plier::PlierDialect>())
+    {
+        assert(nullptr != dialect);
+    }
+
+    mlir::LogicalResult
+    matchAndRewrite(plier::Operation* op, mlir::PatternRewriter& rewriter) const override
+    {
+        if (op->getResultTypes().size() != 1 ||
+            !op->getResultTypes()[0].isa<mlir::TupleType>() ||
+            (op->getDialect() != dialect))
+        {
+            return mlir::failure();
+        }
+        auto types = op->getResultTypes()[0].cast<mlir::TupleType>().getTypes();
+
+        auto new_op = change_op_ret_type(op, rewriter, types);
+        auto new_op_results = new_op->getResults();
+
+        llvm::SmallVector<mlir::Operation*, 8> users(op->getUsers());
+        llvm::SmallVector<mlir::Value, 8> new_operands;
+        op->dump();
+        for (auto user_op : users)
+        {
+            new_operands.clear();
+            for (auto arg : user_op->getOperands())
+            {
+                if (arg.getDefiningOp() == op)
+                {
+                    std::copy(new_op_results.begin(), new_op_results.end(), std::back_inserter(new_operands));
+                }
+                else
+                {
+                    new_operands.push_back(arg);
+                }
+            }
+            rewriter.updateRootInPlace(user_op, [&]()
+            {
+                user_op->setOperands(new_operands);
+            });
+        }
+        rewriter.eraseOp(op);
+        return mlir::success();
+    }
+
+private:
+    mlir::Dialect* dialect = nullptr;
+};
+
+
 struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 {
     FuncOpSignatureConversion(mlir::MLIRContext* ctx,
@@ -519,8 +583,8 @@ struct OpTypeConversion : public mlir::RewritePattern
         {
             if (auto new_type = map_plier_type(type))
             {
+                changed = changed || (new_type != type);
                 new_types.push_back(new_type);
-                changed = true;
             }
             else
             {
@@ -548,6 +612,7 @@ struct PlierToStdPass :
     virtual void getDependentDialects(
         mlir::DialectRegistry &registry) const override
     {
+        registry.insert<plier::PlierDialect>();
         registry.insert<mlir::StandardOpsDialect>();
     }
 
@@ -566,7 +631,8 @@ void PlierToStdPass::runOnOperation()
     patterns.insert<FuncOpSignatureConversion,
                     OpTypeConversion>(&getContext(), type_converter);
     patterns.insert<ConstOpLowering, BinOpLowering,
-                    CallOpLowering, CastOpLowering>(&getContext());
+                    CallOpLowering, CastOpLowering,
+                    ExpandTuples>(&getContext());
 
     auto apply_conv = [&]()
     {

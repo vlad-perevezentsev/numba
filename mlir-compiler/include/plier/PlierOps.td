@@ -22,7 +22,7 @@ def ArgOp : Plier_Op<"arg", [NoSideEffect]> {
                      UI32Attr:$index,
                      StrAttr:$name);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
     let hasFolder = 1;
 
     let builders = [
@@ -34,7 +34,7 @@ def ConstOp : Plier_Op<"const", [NoSideEffect]> {
     let arguments = (ins
                      AnyAttr:$val);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
         OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Attribute val">
@@ -45,7 +45,7 @@ def GlobalOp : Plier_Op<"global", [NoSideEffect]> {
   let arguments = (ins
                    StrAttr:$name);
 
-  let results = (outs Plier_PyType);
+  let results = (outs AnyType);
 
   let builders = [
       OpBuilder<"OpBuilder &b, OperationState &state, StringRef name">
