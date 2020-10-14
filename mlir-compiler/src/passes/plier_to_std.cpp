@@ -16,68 +16,56 @@
 
 namespace
 {
-mlir::Type map_int_type(plier::PyType type)
+mlir::Type map_int_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    auto name = type.getName();
     unsigned num_bits = 0;
     if (name.consume_front("int") &&
-        !name.consumeInteger<unsigned>(10, num_bits) && name.empty())
+        !name.consumeInteger<unsigned>(10, num_bits))
     {
-        return mlir::IntegerType::get(num_bits, type.getContext());
+        return mlir::IntegerType::get(num_bits, &ctx);
     }
     return nullptr;
 }
 
-mlir::Type map_int_literal_type(plier::PyType type)
+mlir::Type map_int_literal_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    auto name = type.getName();
     unsigned dummy = 0;
     if (name.consume_front("Literal[int](") &&
-        !name.consumeInteger<unsigned>(10, dummy) && name.consume_front(")")
-        && name.empty())
+        !name.consumeInteger<unsigned>(10, dummy) && name.consume_front(")"))
     {
-        return mlir::IntegerType::get(64, type.getContext()); // TODO
+        return mlir::IntegerType::get(64, &ctx); // TODO
     }
     return nullptr;
 }
 
-mlir::Type map_bool_type(plier::PyType type)
+mlir::Type map_bool_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    auto name = type.getName();
-    if (name == "bool")
+    if (name.consume_front("bool"))
     {
-        return mlir::IntegerType::get(1, type.getContext());
+        return mlir::IntegerType::get(1, &ctx);
     }
     return nullptr;
 }
 
-mlir::Type map_float_type(plier::PyType type)
+mlir::Type map_float_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    auto name = type.getName();
     unsigned num_bits = 0;
     if (name.consume_front("float") &&
-        !name.consumeInteger<unsigned>(10, num_bits) && name.empty())
+        !name.consumeInteger<unsigned>(10, num_bits))
     {
-        auto ctx = type.getContext();
         switch(num_bits)
         {
-        case 64: return mlir::Float64Type::get(ctx);
-        case 32: return mlir::Float32Type::get(ctx);
-        case 16: return mlir::Float16Type::get(ctx);
+        case 64: return mlir::Float64Type::get(&ctx);
+        case 32: return mlir::Float32Type::get(&ctx);
+        case 16: return mlir::Float16Type::get(&ctx);
         }
     }
     return nullptr;
 }
 
-mlir::Type map_plier_type(mlir::Type type)
+mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
-    assert(static_cast<bool>(type));
-    if (!type.isa<plier::PyType>())
-    {
-        return nullptr;
-    }
-    auto ptype = type.cast<plier::PyType>();
-    using func_t = mlir::Type(*)(plier::PyType);
+    using func_t = mlir::Type(*)(mlir::MLIRContext& ctx, llvm::StringRef& name);
     const func_t handlers[] = {
         &map_int_type,
         &map_int_literal_type,
@@ -86,13 +74,25 @@ mlir::Type map_plier_type(mlir::Type type)
     };
     for (auto h : handlers)
     {
-        auto t = h(ptype);
-        if (t != mlir::Type())
+        auto temp_name = name;
+        auto t = h(ctx, temp_name);
+        if (static_cast<bool>(t))
         {
+            name = temp_name;
             return t;
         }
     }
     return nullptr;
+}
+
+mlir::Type map_plier_type(mlir::Type type)
+{
+    if (!type.isa<plier::PyType>())
+    {
+        return type;
+    }
+    auto name = type.cast<plier::PyType>().getName();
+    return map_plier_type_name(*type.getContext(), name);
 }
 
 bool is_supported_type(mlir::Type type)
@@ -540,14 +540,10 @@ void PlierToStdPass::runOnOperation()
 
     auto apply_conv = [&]()
     {
-        return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
     };
 
-    if (mlir::failed(apply_conv()))
-    {
-        signalPassFailure();
-        return;
-    }
+    apply_conv();
 }
 
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)

@@ -75,12 +75,12 @@ def CastOp : Plier_Op<"cast", []> {
 
 def PyCallOp : Plier_Op<"call", []> {
   let arguments = (ins
-                   Plier_PyType:$func,
+                   AnyType:$func,
                    Variadic<AnyType>:$args,
                    UI32Attr:$kw_start,
                    ArrayAttr:$kw_names);
 
-  let results = (outs Plier_PyType);
+  let results = (outs AnyType);
 
   let builders = [
       OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value func, "
@@ -93,7 +93,7 @@ def BuildTupleOp : Plier_Op<"build_tuple", []> {
     let arguments = (ins
                      Variadic<AnyType>:$args);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::ValueRange args">
@@ -102,11 +102,11 @@ def BuildTupleOp : Plier_Op<"build_tuple", []> {
 
 def StaticGetItemOp : Plier_Op<"static_getitem", []> {
     let arguments = (ins
-                     Plier_PyType:$value,
-                     Plier_PyType:$index_var,
+                     AnyType:$value,
+                     AnyType:$index_var,
                      UI32Attr:$index);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, "
@@ -116,9 +116,9 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
 
 def GetiterOp : Plier_Op<"getiter", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -127,9 +127,9 @@ def GetiterOp : Plier_Op<"getiter", []> {
 
 def IternextOp : Plier_Op<"iternext", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -138,9 +138,9 @@ def IternextOp : Plier_Op<"iternext", []> {
 
 def PairfirstOp : Plier_Op<"pair_first", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -149,9 +149,9 @@ def PairfirstOp : Plier_Op<"pair_first", []> {
 
 def PairsecondOp : Plier_Op<"pair_second", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
-    let results = (outs Plier_PyType);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -160,7 +160,7 @@ def PairsecondOp : Plier_Op<"pair_second", []> {
 
 def DelOp : Plier_Op<"del", []> {
     let arguments = (ins
-                     Plier_PyType:$value);
+                     AnyType:$value);
 
 //    let builders = [
 //        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value val">

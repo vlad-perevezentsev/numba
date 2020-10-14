@@ -241,7 +241,7 @@ struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::Functio
         mlir::OwningRewritePatternList patterns;
         auto apply_conv = [&]()
         {
-            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+            (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
         };
 
         auto func = getFunction();
@@ -250,11 +250,7 @@ struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::Functio
         patterns.insert<ReturnOpLowering>(&getContext(),
                                           type_helper.get_type_converter());
 
-        if (mlir::failed(apply_conv()))
-        {
-            signalPassFailure();
-            return;
-        }
+        apply_conv();
     }
 };
 
@@ -272,17 +268,13 @@ struct PostLLVMLowering :
         mlir::OwningRewritePatternList patterns;
         auto apply_conv = [&]()
         {
-            return mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+            (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
         };
 
         // Remove redundant bitcasts we have created on PreLowering
         patterns.insert<RemoveBitcasts>(&getContext());
 
-        if (mlir::failed(apply_conv()))
-        {
-            signalPassFailure();
-            return;
-        }
+        apply_conv();
     }
 };
 
