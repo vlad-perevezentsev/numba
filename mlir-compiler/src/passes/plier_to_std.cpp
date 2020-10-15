@@ -694,6 +694,11 @@ void register_plier_to_std_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_high_lowering_stage();
-        sink("plier_to_std", {stage.begin}, {stage.end}, &populate_plier_to_std_pipeline);
+        sink(plier_to_std_pipeline_name(), {stage.begin}, {stage.end}, &populate_plier_to_std_pipeline);
     });
+}
+
+llvm::StringRef plier_to_std_pipeline_name()
+{
+    return "plier_to_std";
 }

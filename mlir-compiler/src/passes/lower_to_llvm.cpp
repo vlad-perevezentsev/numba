@@ -293,6 +293,11 @@ void register_lower_to_llvm_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_lower_lowering_stage();
-        sink("lower_to_llvm", {stage.begin}, {stage.end}, &populate_lower_to_llvm_pipeline);
+        sink(lower_to_llvm_pipeline_name(), {stage.begin}, {stage.end}, &populate_lower_to_llvm_pipeline);
     });
+}
+
+llvm::StringRef lower_to_llvm_pipeline_name()
+{
+    return "lower_to_llvm";
 }
