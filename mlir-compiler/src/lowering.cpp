@@ -249,7 +249,7 @@ private:
         if (py::isinstance(value, insts.Arg))
         {
             auto index = value.attr("index").cast<std::size_t>();
-            return builder.create<plier::ArgOp>(builder.getUnknownLoc(), index,
+            return builder.create<plier::ArgOp>(get_current_loc(), index,
                                                 target.attr("name").cast<std::string>());
         }
         if(py::isinstance(value, insts.Expr))
@@ -263,12 +263,12 @@ private:
         if (py::isinstance(value, insts.Const))
         {
             auto val = get_const_val(value.attr("value"));
-            return builder.create<plier::ConstOp>(builder.getUnknownLoc(), val);
+            return builder.create<plier::ConstOp>(get_current_loc(), val);
         }
         if (py::isinstance(value, insts.Global))
         {
             auto name = value.attr("name").cast<std::string>();
-            return builder.create<plier::GlobalOp>(builder.getUnknownLoc(),
+            return builder.create<plier::GlobalOp>(get_current_loc(),
                                                    name);
         }
 
@@ -305,14 +305,14 @@ private:
     mlir::Value lower_simple(const py::handle& inst)
     {
         auto value = loadvar(inst.attr("value"));
-        return builder.create<T>(builder.getUnknownLoc(), value);
+        return builder.create<T>(get_current_loc(), value);
     }
 
     template <typename T>
     mlir::Value lower_simple_multiresult(const py::handle& inst)
     {
         auto value = loadvar(inst.attr("value"));
-        auto res = builder.create<T>(builder.getUnknownLoc(), value);
+        auto res = builder.create<T>(get_current_loc(), value);
         assert(res.getNumResults() == 1);
         return res.getResult(0);
     }
@@ -321,7 +321,7 @@ private:
     {
         auto value = loadvar(inst.attr("value"));
         auto res_type = get_type(current_instr.attr("target"));
-        return builder.create<plier::CastOp>(builder.getUnknownLoc(), res_type, value);
+        return builder.create<plier::CastOp>(get_current_loc(), res_type, value);
     }
 
     mlir::Value lower_static_getitem(const py::handle& inst)
@@ -329,7 +329,7 @@ private:
         auto value = loadvar(inst.attr("value"));
         auto index_var = loadvar(inst.attr("index_var"));
         auto index = inst.attr("index").cast<unsigned>();
-        return builder.create<plier::StaticGetItemOp>(builder.getUnknownLoc(),
+        return builder.create<plier::StaticGetItemOp>(get_current_loc(),
                                                       value, index_var, index);
     }
 
@@ -341,7 +341,7 @@ private:
         {
             args.push_back(loadvar(item));
         }
-        auto res = builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args);
+        auto res = builder.create<plier::BuildTupleOp>(get_current_loc(), args);
         assert(res.getNumResults() == 1);
         return res.getResult(0);
     }
@@ -391,7 +391,7 @@ private:
             kwargs_list.push_back({name.cast<std::string>(), loadvar(val_name)});
         }
 
-        return builder.create<plier::PyCallOp>(builder.getUnknownLoc(), func,
+        return builder.create<plier::PyCallOp>(get_current_loc(), func,
                                                args_list, kwargs_list);
     }
 
@@ -412,7 +412,7 @@ private:
             if (op.is(std::get<1>(elem)))
             {
                 auto op_name = std::get<0>(elem).op;
-                return builder.create<plier::BinOp>(builder.getUnknownLoc(), lhs, rhs, op_name);
+                return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
             }
         }
 
@@ -435,7 +435,7 @@ private:
     void delvar(const py::handle& inst)
     {
         auto var = loadvar(inst);
-        builder.create<plier::DelOp>(builder.getUnknownLoc(), var);
+        builder.create<plier::DelOp>(get_current_loc(), var);
     }
 
     void retvar(const py::handle& inst)
@@ -446,9 +446,9 @@ private:
         auto var_type = var.getType();
         if (ret_type != var_type)
         {
-            var = builder.create<plier::CastOp>(builder.getUnknownLoc(), ret_type, var);
+            var = builder.create<plier::CastOp>(get_current_loc(), ret_type, var);
         }
-        builder.create<mlir::ReturnOp>(builder.getUnknownLoc(), var);
+        builder.create<mlir::ReturnOp>(get_current_loc(), var);
     }
 
     void branch(const py::handle& cond, const py::handle& tr, const py::handle& fl)
@@ -456,14 +456,14 @@ private:
         auto c = loadvar(cond);
         auto tr_block = blocks_map.find(tr.cast<int>())->second;
         auto fl_block = blocks_map.find(fl.cast<int>())->second;
-        auto cond_val = builder.create<plier::CastOp>(builder.getUnknownLoc(), mlir::IntegerType::get(1, &ctx), c);
-        builder.create<mlir::CondBranchOp>(builder.getUnknownLoc(), cond_val, tr_block, fl_block);
+        auto cond_val = builder.create<plier::CastOp>(get_current_loc(), mlir::IntegerType::get(1, &ctx), c);
+        builder.create<mlir::CondBranchOp>(get_current_loc(), cond_val, tr_block, fl_block);
     }
 
     void jump(const py::handle& target)
     {
         auto block = blocks_map.find(target.cast<int>())->second;
-        builder.create<mlir::BranchOp>(builder.getUnknownLoc(), mlir::None, block);
+        builder.create<mlir::BranchOp>(get_current_loc(), mlir::None, block);
     }
 
     mlir::Attribute get_const_val(const py::handle& val)
@@ -484,6 +484,11 @@ private:
             args.push_back(get_obj_type(arg));
         }
         return mlir::FunctionType::get(args, {ret}, &ctx);
+    }
+
+    mlir::Location get_current_loc()
+    {
+        return builder.getUnknownLoc(); // TODO
     }
 
     void fixup_phis()
