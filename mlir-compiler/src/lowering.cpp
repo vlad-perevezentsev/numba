@@ -287,7 +287,7 @@ private:
             {"build_tuple", &plier_lowerer::lower_build_tuple},
             {"static_getitem", &plier_lowerer::lower_static_getitem},
             {"getiter", &plier_lowerer::lower_simple<plier::GetiterOp>},
-            {"iternext", &plier_lowerer::lower_simple<plier::IternextOp>},
+            {"iternext", &plier_lowerer::lower_simple_multiresult<plier::IternextOp>},
             {"pair_first", &plier_lowerer::lower_simple<plier::PairfirstOp>},
             {"pair_second", &plier_lowerer::lower_simple<plier::PairsecondOp>},
         };
@@ -306,6 +306,15 @@ private:
     {
         auto value = loadvar(inst.attr("value"));
         return builder.create<T>(builder.getUnknownLoc(), value);
+    }
+
+    template <typename T>
+    mlir::Value lower_simple_multiresult(const py::handle& inst)
+    {
+        auto value = loadvar(inst.attr("value"));
+        auto res = builder.create<T>(builder.getUnknownLoc(), value);
+        assert(res.getNumResults() == 1);
+        return res.getResult(0);
     }
 
     mlir::Value lower_cast(const py::handle& inst)
@@ -332,7 +341,9 @@ private:
         {
             args.push_back(loadvar(item));
         }
-        return builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args).getResult(0);
+        auto res = builder.create<plier::BuildTupleOp>(builder.getUnknownLoc(), args);
+        assert(res.getNumResults() == 1);
+        return res.getResult(0);
     }
 
     mlir::Value lower_phi(const py::handle& expr)

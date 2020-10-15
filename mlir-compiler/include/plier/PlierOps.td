@@ -131,7 +131,7 @@ def IternextOp : Plier_Op<"iternext", []> {
     let arguments = (ins
                      AnyType:$value);
 
-    let results = (outs AnyType);
+    let results = (outs Variadic<AnyType>);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
