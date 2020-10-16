@@ -20,3 +20,16 @@ struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 private:
     mlir::TypeConverter& converter;
 };
+
+struct OpTypeConversion : public mlir::RewritePattern
+{
+    OpTypeConversion(mlir::MLIRContext* ctx,
+                     mlir::TypeConverter& conv);
+
+    /// Hook for derived classes to implement combined matching and rewriting.
+    mlir::LogicalResult
+    matchAndRewrite(mlir::Operation* op, mlir::PatternRewriter &rewriter) const override;
+
+private:
+    mlir::TypeConverter& converter;
+};

@@ -541,49 +541,6 @@ private:
     mlir::Dialect* dialect = nullptr;
 };
 
-struct OpTypeConversion : public mlir::RewritePattern
-{
-    OpTypeConversion(mlir::MLIRContext* /*ctx*/,
-                     mlir::TypeConverter& conv):
-        RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()),
-        converter(conv) {}
-
-    /// Hook for derived classes to implement combined matching and rewriting.
-    mlir::LogicalResult
-    matchAndRewrite(mlir::Operation* op, mlir::PatternRewriter &rewriter) const override
-    {
-        bool changed = false;
-        llvm::SmallVector<mlir::Type, 8> new_types;
-        for (auto type : op->getResultTypes())
-        {
-            if (auto new_type = converter.convertType(type))
-            {
-                changed = changed || (new_type != type);
-                new_types.push_back(new_type);
-            }
-            else
-            {
-                new_types.push_back(type);
-            }
-        }
-
-        if (changed)
-        {
-            rewriter.updateRootInPlace(op, [&]
-            {
-                for (unsigned i = 0; i < static_cast<unsigned>(new_types.size()); ++i)
-                {
-                    op->getResult(i).setType(new_types[i]);
-                }
-            });
-        }
-        return mlir::success(changed);
-    }
-
-private:
-    mlir::TypeConverter& converter;
-};
-
 struct PlierToStdPass :
     public mlir::PassWrapper<PlierToStdPass, mlir::OperationPass<mlir::ModuleOp>>
 {
