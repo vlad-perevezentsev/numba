@@ -20,10 +20,10 @@ include(HandleLLVMOptions)
 add_subdirectory(include/plier)
 
 set(SOURCES_LIST
-    src/passes/base_pipeline.cpp
-    src/passes/lower_to_llvm.cpp
-    src/passes/plier_to_linalg.cpp
-    src/passes/plier_to_std.cpp
+    src/pipelines/base_pipeline.cpp
+    src/pipelines/lower_to_llvm.cpp
+    src/pipelines/plier_to_linalg.cpp
+    src/pipelines/plier_to_std.cpp
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
@@ -34,10 +34,10 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     include/plier/dialect.hpp
     include/plier/PlierOps.td
-    src/passes/base_pipeline.hpp
-    src/passes/lower_to_llvm.hpp
-    src/passes/plier_to_linalg.hpp
-    src/passes/plier_to_std.hpp
+    src/pipelines/base_pipeline.hpp
+    src/pipelines/lower_to_llvm.hpp
+    src/pipelines/plier_to_linalg.hpp
+    src/pipelines/plier_to_std.hpp
     src/compiler.hpp
     src/lowering.hpp
     src/pipeline_registry.hpp

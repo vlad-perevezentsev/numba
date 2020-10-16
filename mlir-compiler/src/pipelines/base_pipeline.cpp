@@ -1,4 +1,4 @@
-#include "passes/base_pipeline.hpp"
+#include "pipelines/base_pipeline.hpp"
 
 #include "pipeline_registry.hpp"
 

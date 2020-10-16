@@ -1,4 +1,4 @@
-#include "passes/lower_to_llvm.hpp"
+#include "pipelines/lower_to_llvm.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h>

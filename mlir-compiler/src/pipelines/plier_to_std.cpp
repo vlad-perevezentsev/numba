@@ -1,4 +1,4 @@
-#include "passes/plier_to_std.hpp"
+#include "pipelines/plier_to_std.hpp"
 
 #include <mlir/IR/Dialect.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>

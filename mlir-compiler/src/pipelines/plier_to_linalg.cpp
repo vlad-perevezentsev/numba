@@ -1,4 +1,4 @@
-#include "passes/plier_to_linalg.hpp"
+#include "pipelines/plier_to_linalg.hpp"
 
 #include <mlir/IR/Dialect.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
@@ -9,7 +9,7 @@
 
 #include "plier/dialect.hpp"
 
-#include "passes/plier_to_std.hpp"
+#include "pipelines/plier_to_std.hpp"
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"

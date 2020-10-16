@@ -22,10 +22,10 @@
 #include "pipeline_registry.hpp"
 #include "utils.hpp"
 
-#include "passes/base_pipeline.hpp"
-#include "passes/plier_to_std.hpp"
-#include "passes/plier_to_linalg.hpp"
-#include "passes/lower_to_llvm.hpp"
+#include "pipelines/base_pipeline.hpp"
+#include "pipelines/plier_to_std.hpp"
+#include "pipelines/plier_to_linalg.hpp"
+#include "pipelines/lower_to_llvm.hpp"
 
 namespace py = pybind11;
 namespace
