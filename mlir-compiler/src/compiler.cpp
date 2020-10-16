@@ -54,6 +54,8 @@ public:
         {
             if (mlir::failed(pm.run(module)))
             {
+                err_stream << "\n";
+                module.print(err_stream);
                 err_stream.flush();
                 report_error(llvm::Twine("MLIR pipeline failed\n") + err);
             }
