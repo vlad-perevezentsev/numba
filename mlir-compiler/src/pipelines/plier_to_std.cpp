@@ -172,53 +172,6 @@ bool is_supported_type(mlir::Type type)
     return type.isIntOrFloat();
 }
 
-mlir::Type map_type(mlir::Type type)
-{
-    auto new_type = is_supported_type(type) ? type : map_plier_type(type);
-    return static_cast<bool>(new_type) ? new_type : type;
-};
-
-bool convert_func_sig(mlir::FuncOp func)
-{
-    llvm::SmallVector<mlir::Type, 8> new_arg_types;
-    new_arg_types.reserve(func.getNumArguments());
-    bool changed = false;
-    for (auto arg_type : func.getArgumentTypes())
-    {
-        auto new_type = map_type(arg_type);
-        changed = changed || (new_type != arg_type);
-        new_arg_types.push_back(new_type);
-    }
-
-    auto res_type = func.getType().getResult(0);
-    auto new_res_type = map_type(res_type);
-    changed = changed || (res_type != new_res_type);
-    if (changed)
-    {
-        auto func_type = mlir::FunctionType::get(new_arg_types, new_res_type, func.getContext());
-        func.setType(func_type);
-        for (unsigned i = 0; i < func.getNumArguments(); ++i)
-        {
-            func.front().getArgument(i).setType(new_arg_types[i]);
-        }
-    }
-    for (auto& bb : llvm::make_range(++func.getBody().begin(),
-                                     func.getBody().end()))
-    {
-        for (auto arg : bb.getArguments())
-        {
-            auto arg_type = arg.getType();
-            auto new_type = map_type(arg_type);
-            if (new_type != arg_type)
-            {
-                arg.setType(new_type);
-                changed = true;
-            }
-        }
-    }
-    return changed;
-}
-
 template<typename T>
 void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
 {
