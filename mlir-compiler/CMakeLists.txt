@@ -24,7 +24,7 @@ set(SOURCES_LIST
     src/pipelines/lower_to_llvm.cpp
     src/pipelines/plier_to_linalg.cpp
     src/pipelines/plier_to_std.cpp
-    src/rewrites/func_signature_conversion.cpp
+    src/rewrites/type_conversion.cpp
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
@@ -39,7 +39,7 @@ set(HEADERS_LIST
     src/pipelines/lower_to_llvm.hpp
     src/pipelines/plier_to_linalg.hpp
     src/pipelines/plier_to_std.hpp
-    src/rewrites/func_signature_conversion.hpp
+    src/rewrites/type_conversion.hpp
     src/compiler.hpp
     src/lowering.hpp
     src/pipeline_registry.hpp

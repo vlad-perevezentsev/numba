@@ -11,7 +11,7 @@
 
 #include "plier/dialect.hpp"
 
-#include "rewrites/func_signature_conversion.hpp"
+#include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"

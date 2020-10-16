@@ -1,4 +1,4 @@
-#include "rewrites/func_signature_conversion.hpp"
+#include "rewrites/type_conversion.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
