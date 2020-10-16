@@ -20,26 +20,28 @@ include(HandleLLVMOptions)
 add_subdirectory(include/plier)
 
 set(SOURCES_LIST
+    src/passes/base_pipeline.cpp
+    src/passes/lower_to_llvm.cpp
+    src/passes/plier_to_linalg.cpp
+    src/passes/plier_to_std.cpp
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
     src/module.cpp
-    src/passes/base_pipeline.cpp
-    src/passes/lower_to_llvm.cpp
-    src/passes/plier_to_std.cpp
     src/pipeline_registry.cpp
     src/utils.cpp
     )
 set(HEADERS_LIST
-    src/compiler.hpp
-    src/lowering.hpp
-    src/passes/base_pipeline.hpp
-    src/passes/lower_to_llvm.hpp
-    src/passes/plier_to_std.hpp
-    src/pipeline_registry.hpp
-    src/utils.hpp
     include/plier/dialect.hpp
     include/plier/PlierOps.td
+    src/passes/base_pipeline.hpp
+    src/passes/lower_to_llvm.hpp
+    src/passes/plier_to_linalg.hpp
+    src/passes/plier_to_std.hpp
+    src/compiler.hpp
+    src/lowering.hpp
+    src/pipeline_registry.hpp
+    src/utils.hpp
     )
 
 pybind11_add_module(${PROJECT_NAME} ${SOURCES_LIST} ${HEADERS_LIST})

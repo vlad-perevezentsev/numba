@@ -24,6 +24,7 @@
 
 #include "passes/base_pipeline.hpp"
 #include "passes/plier_to_std.hpp"
+#include "passes/plier_to_linalg.hpp"
 #include "passes/lower_to_llvm.hpp"
 
 namespace py = pybind11;
@@ -597,6 +598,7 @@ void create_pipeline(PipelineRegistry& registry)
     register_base_pipeline(registry);
     register_lower_to_llvm_pipeline(registry);
     register_plier_to_std_pipeline(registry);
+    register_plier_to_linalg_pipeline(registry);
 }
 }
 
