@@ -1,5 +1,12 @@
 #include "passes/plier_to_linalg.hpp"
 
+#include <mlir/IR/Dialect.h>
+#include <mlir/Dialect/StandardOps/IR/Ops.h>
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassManager.h>
+#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/Passes.h>
+
 #include "plier/dialect.hpp"
 
 #include "passes/plier_to_std.hpp"
@@ -10,9 +17,45 @@
 namespace
 {
 
-void populate_plier_to_linalg_pipeline(mlir::OpPassManager& /*pm*/)
+struct PlierToLinalgPass :
+    public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
 {
+    virtual void getDependentDialects(
+        mlir::DialectRegistry &registry) const override
+    {
+        registry.insert<plier::PlierDialect>();
+        registry.insert<mlir::StandardOpsDialect>();
+    }
 
+    void runOnOperation() override;
+};
+
+void PlierToLinalgPass::runOnOperation()
+{
+//    mlir::TypeConverter type_converter;
+//    type_converter.addConversion([](plier::Type type)->llvm::Optional<mlir::Type>
+//    {
+//        return map_plier_type(type);
+//    });
+
+    mlir::OwningRewritePatternList patterns;
+//    patterns.insert<FuncOpSignatureConversion,
+//                    OpTypeConversion>(&getContext(), type_converter);
+//    patterns.insert<ConstOpLowering, BinOpLowering,
+//                    CallOpLowering, CastOpLowering,
+//                    ExpandTuples>(&getContext());
+
+    auto apply_conv = [&]()
+    {
+        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    };
+
+    apply_conv();
+}
+
+void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
+{
+    pm.addPass(std::make_unique<PlierToLinalgPass>());
 }
 }
 
