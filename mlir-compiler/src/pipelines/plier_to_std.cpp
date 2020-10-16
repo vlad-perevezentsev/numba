@@ -544,8 +544,9 @@ private:
 struct OpTypeConversion : public mlir::RewritePattern
 {
     OpTypeConversion(mlir::MLIRContext* /*ctx*/,
-                     mlir::TypeConverter& /*converter*/)
-        : RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()) {}
+                     mlir::TypeConverter& conv):
+        RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()),
+        converter(conv) {}
 
     /// Hook for derived classes to implement combined matching and rewriting.
     mlir::LogicalResult
@@ -555,7 +556,7 @@ struct OpTypeConversion : public mlir::RewritePattern
         llvm::SmallVector<mlir::Type, 8> new_types;
         for (auto type : op->getResultTypes())
         {
-            if (auto new_type = map_plier_type(type))
+            if (auto new_type = converter.convertType(type))
             {
                 changed = changed || (new_type != type);
                 new_types.push_back(new_type);
@@ -578,6 +579,9 @@ struct OpTypeConversion : public mlir::RewritePattern
         }
         return mlir::success(changed);
     }
+
+private:
+    mlir::TypeConverter& converter;
 };
 
 struct PlierToStdPass :
