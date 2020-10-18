@@ -554,6 +554,26 @@ struct PlierToStdPass :
     void runOnOperation() override;
 };
 
+bool check_for_plier_types(mlir::Type type)
+{
+    if (type.isa<plier::PyType>())
+    {
+        return true;
+    }
+    if (auto ftype = type.dyn_cast<mlir::FunctionType>())
+    {
+        return llvm::any_of(ftype.getResults(), &check_for_plier_types) ||
+               llvm::any_of(ftype.getInputs(), &check_for_plier_types);
+    }
+    return false;
+}
+
+bool check_op_for_plier_types(mlir::Operation* op)
+{
+    assert(nullptr != op);
+    return llvm::any_of(op->getResultTypes(), &check_for_plier_types);
+}
+
 void PlierToStdPass::runOnOperation()
 {
     mlir::TypeConverter type_converter;
@@ -563,18 +583,39 @@ void PlierToStdPass::runOnOperation()
     });
 
     mlir::OwningRewritePatternList patterns;
-    patterns.insert<FuncOpSignatureConversion,
-                    OpTypeConversion>(&getContext(), type_converter);
-    patterns.insert<ConstOpLowering, BinOpLowering,
-                    CallOpLowering, CastOpLowering,
-                    ExpandTuples>(&getContext());
+//    patterns.insert<FuncOpSignatureConversion,
+//                    OpTypeConversion>(&getContext(), type_converter);
+//    patterns.insert<ConstOpLowering, BinOpLowering,
+//                    CallOpLowering, CastOpLowering,
+//                    ExpandTuples>(&getContext());
 
-    auto apply_conv = [&]()
+//    auto apply_conv = [&]()
+//    {
+//        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+//    };
+
+//    apply_conv();
+    mlir::ConversionTarget target(getContext());
+    target.addLegalDialect<mlir::StandardOpsDialect>();
+    target.addDynamicallyLegalOp<mlir::FuncOp>(
+        [](mlir::Operation* op)->bool
+        {
+            return !check_for_plier_types(mlir::cast<mlir::FuncOp>(op).getType());
+        });
+//    target.addDynamicallyLegalDialect<mlir::StandardOpsDialect>(
+//        [](mlir::Operation* op)->bool
+//        {
+//            auto res = !check_op_for_plier_types(op);
+//            llvm::errs() << "Check op " << op->getName() << " " << res << "\n";
+//            return res;
+//        });
+
+    mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(), type_converter);
+
+    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
     {
-        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-    };
-
-    apply_conv();
+        signalPassFailure();
+    }
 }
 
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
