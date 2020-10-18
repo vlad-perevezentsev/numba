@@ -132,6 +132,17 @@ mlir::Type map_tuple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
     return mlir::TupleType::get(types, &ctx);
 }
 
+mlir::Type map_func_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
+{
+    if (name.consume_front("Function(") &&
+        name.consume_front("<class 'bool'>") && // TODO unhardcode;
+        name.consume_front(")"))
+    {
+        return mlir::FunctionType::get({}, {}, &ctx);
+    }
+    return nullptr;
+}
+
 mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
     using func_t = mlir::Type(*)(mlir::MLIRContext& ctx, llvm::StringRef& name);
@@ -143,6 +154,7 @@ mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
         &map_pair_type,
         &map_unituple_type,
         &map_tuple_type,
+        &map_func_type,
     };
     for (auto h : handlers)
     {
@@ -198,19 +210,133 @@ bool is_float(mlir::Type type)
     return type.isa<mlir::FloatType>();
 }
 
-struct ConstOpLowering : public mlir::OpRewritePattern<plier::ConstOp>
+struct ConstOpLowering : public mlir::OpConversionPattern<plier::ConstOp>
 {
-    using mlir::OpRewritePattern<plier::ConstOp>::OpRewritePattern;
-    mlir::LogicalResult matchAndRewrite(plier::ConstOp op,
-                                        mlir::PatternRewriter& rewriter) const
+    using mlir::OpConversionPattern<plier::ConstOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::ConstOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
+        (void)operands;
+        assert(operands.empty());
         auto value = op.val();
         if (!is_supported_type(value.getType()))
         {
             return mlir::failure();
         }
-        rewriter.replaceOpWithNewOp<mlir::ConstantOp>(op, value.getType(), value);
+        rewriter.replaceOpWithNewOp<mlir::ConstantOp>(op, value);
         return mlir::success();
+    }
+};
+
+struct ReturnOpLowering : public mlir::OpConversionPattern<mlir::ReturnOp>
+{
+    using mlir::OpConversionPattern<mlir::ReturnOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::ReturnOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
+    {
+        auto func = mlir::cast<mlir::FuncOp>(op.getParentOp());
+        auto res_types = func.getType().getResults();
+        assert(res_types.size() == operands.size());
+        bool converted = false;
+        llvm::SmallVector<mlir::Value, 4> new_vals;
+        for (auto it : llvm::zip(operands, res_types))
+        {
+            auto src = std::get<0>(it);
+            auto dst = std::get<1>(it);
+            if (src.getType() != dst)
+            {
+                auto new_op = rewriter.create<plier::CastOp>(op.getLoc(), dst, src);
+                new_vals.push_back(new_op);
+                converted = true;
+            }
+            else
+            {
+                new_vals.push_back(src);
+            }
+        }
+        if (converted)
+        {
+            rewriter.create<mlir::ReturnOp>(op.getLoc(), new_vals);
+            rewriter.eraseOp(op);
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
+
+struct SelectOpLowering : public mlir::OpConversionPattern<mlir::SelectOp>
+{
+    using mlir::OpConversionPattern<mlir::SelectOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::SelectOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
+    {
+        assert(operands.size() == 3);
+        auto true_val = operands[1];
+        auto false_val = operands[2];
+        if (true_val.getType() == false_val.getType() &&
+            true_val.getType() != op.getType())
+        {
+            auto cond = operands[0];
+            rewriter.replaceOpWithNewOp<mlir::SelectOp>(op, cond, true_val, false_val);
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
+
+struct CondBrOpLowering : public mlir::OpConversionPattern<mlir::CondBranchOp>
+{
+    using mlir::OpConversionPattern<mlir::CondBranchOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::CondBranchOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
+    {
+        assert(!operands.empty());
+        auto cond = operands.front();
+        operands = operands.drop_front();
+        bool changed = false;
+
+        auto process_operand = [&](mlir::Block& block, auto& ret)
+        {
+            for (auto arg : block.getArguments())
+            {
+                assert(!operands.empty());
+                auto val = operands.front();
+                operands = operands.drop_front();
+                auto src_type = val.getType();
+                auto dst_type = arg.getType();
+                if (src_type != dst_type)
+                {
+                    ret.push_back(rewriter.create<plier::CastOp>(op.getLoc(), dst_type, val));
+                    changed = true;
+                }
+                else
+                {
+                    ret.push_back(val);
+                }
+            }
+        };
+
+        llvm::SmallVector<mlir::Value, 4> true_vals;
+        llvm::SmallVector<mlir::Value, 4> false_vals;
+        auto true_dest = op.getTrueDest();
+        auto false_dest = op.getFalseDest();
+        process_operand(*true_dest, true_vals);
+        process_operand(*false_dest, false_vals);
+        if (changed)
+        {
+            rewriter.create<mlir::CondBranchOp>(op.getLoc(), cond, true_dest, true_vals, false_dest, false_vals);
+            rewriter.eraseOp(op);
+            return mlir::success();
+        }
+        return mlir::failure();
     }
 };
 
@@ -316,32 +442,34 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
     llvm_unreachable("Unhandled cast");
 }
 
-struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
+struct BinOpLowering : public mlir::OpConversionPattern<plier::BinOp>
 {
-    using mlir::OpRewritePattern<plier::BinOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<plier::BinOp>::OpConversionPattern;
 
-    mlir::LogicalResult matchAndRewrite(plier::BinOp op,
-                                        mlir::PatternRewriter& rewriter) const
+    mlir::LogicalResult matchAndRewrite(
+        plier::BinOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
-        assert(op.getNumOperands() == 2);
-        auto type0 = op.getOperand(0).getType();
-        auto type1 = op.getOperand(1).getType();
+        assert(operands.size() == 2);
+        auto type0 = operands[0].getType();
+        auto type1 = operands[1].getType();
         if (!is_supported_type(type0) || !is_supported_type(type1))
         {
             return mlir::failure();
         }
         mlir::Type final_type;
-        std::array<mlir::Value, 2> operands;
+        std::array<mlir::Value, 2> converted_operands;
         if (type0 != type1)
         {
             final_type = coerce(type0, type1);
-            operands = {do_cast(final_type, op.getOperand(0), rewriter),
-                        do_cast(final_type, op.getOperand(1), rewriter)};
+            converted_operands = {
+                do_cast(final_type, operands[0], rewriter),
+                do_cast(final_type, operands[1], rewriter)};
         }
         else
         {
             final_type = type0;
-            operands = {op.getOperand(0), op.getOperand(1)};
+            converted_operands = {operands[0], operands[1]};
         }
         assert(static_cast<bool>(final_type));
 
@@ -379,7 +507,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {
                 if (h.type == op.op())
                 {
-                    (h.*mem)(op, rewriter, final_type, operands);
+                    (h.*mem)(op, rewriter, final_type, converted_operands);
                     return mlir::success();
                 }
             }
@@ -399,13 +527,13 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
     }
 };
 
-mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& rewriter)
+mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
 {
-    if (op.getNumOperands() != 2)
+    if (operands.size() != 2)
     {
         return mlir::failure();
     }
-    auto val = op.getOperand(1);
+    auto val = operands[1];
     bool success = false;
     auto replace_op = [&](mlir::Value val)
     {
@@ -423,23 +551,24 @@ mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& r
     return mlir::success(success);
 }
 
-using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, mlir::PatternRewriter&);
+using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter&);
 const constexpr std::pair<llvm::StringRef, call_lowerer_func_t> builtin_calls[] = {
     {"<class 'bool'>", &lower_bool_cast},
 };
 
-struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
+struct CallOpLowering : public mlir::OpConversionPattern<plier::PyCallOp>
 {
-    using mlir::OpRewritePattern<plier::PyCallOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<plier::PyCallOp>::OpConversionPattern;
 
-    mlir::LogicalResult
-    matchAndRewrite(plier::PyCallOp op, mlir::PatternRewriter& rewriter) const override
+    mlir::LogicalResult matchAndRewrite(
+        plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
-        if (op.getNumOperands() == 0)
+        if (operands.empty())
         {
             return mlir::failure();
         }
-        auto func_type = op.getOperand(0).getType();
+        auto func_type = operands[0].getType();
         if (!func_type.isa<plier::PyType>())
         {
             return mlir::failure();
@@ -453,24 +582,34 @@ struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
         {
             if (c.first == name)
             {
-                return c.second(op, rewriter);
+                return c.second(op, operands, rewriter);
             }
         }
         return mlir::failure();
     }
 };
 
-struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
+struct CastOpLowering : public mlir::OpConversionPattern<plier::CastOp>
 {
-    using mlir::OpRewritePattern<plier::CastOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<plier::CastOp>::OpConversionPattern;
 
-    mlir::LogicalResult
-    matchAndRewrite(plier::CastOp op, mlir::PatternRewriter& rewriter) const override
+    mlir::LogicalResult matchAndRewrite(
+        plier::CastOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const
     {
-        auto src_type = op.getOperand().getType();
-        auto dst_type = op.getType();
-        if (is_supported_type(src_type) && is_supported_type(dst_type))
+
+        assert(1 == operands.size());
+        auto converter = getTypeConverter();
+        assert(nullptr != converter);
+        auto src_type = operands[0].getType();
+        auto dst_type = converter->convertType(op.getType());
+        if (dst_type && is_supported_type(src_type) && is_supported_type(dst_type))
         {
+            if (src_type == dst_type)
+            {
+                rewriter.replaceOp(op, operands[0]);
+                return mlir::success();
+            }
             auto new_op = do_cast(dst_type, op.getOperand(), rewriter);
             rewriter.replaceOp(op, new_op);
             return mlir::success();
@@ -554,33 +693,122 @@ struct PlierToStdPass :
     void runOnOperation() override;
 };
 
+bool check_for_plier_types(mlir::Type type)
+{
+    if (type.isa<plier::PyType>())
+    {
+        return true;
+    }
+    if (auto ftype = type.dyn_cast<mlir::FunctionType>())
+    {
+        return llvm::any_of(ftype.getResults(), &check_for_plier_types) ||
+               llvm::any_of(ftype.getInputs(), &check_for_plier_types);
+    }
+    return false;
+}
+
+bool check_op_for_plier_types(mlir::Value val)
+{
+    return check_for_plier_types(val.getType());
+}
+
+template<typename T>
+mlir::Value cast_materializer(
+    mlir::OpBuilder& builder, T type, mlir::ValueRange inputs,
+    mlir::Location loc)
+{
+    assert(inputs.size() == 1);
+    if (type == inputs[0].getType())
+    {
+        return inputs[0];
+    }
+    return builder.create<plier::CastOp>(loc, type, inputs[0]);
+}
+
 void PlierToStdPass::runOnOperation()
 {
     mlir::TypeConverter type_converter;
+//    type_converter.addConversion([](plier::Type type) { return type; });
     type_converter.addConversion([](plier::Type type)->llvm::Optional<mlir::Type>
     {
         return map_plier_type(type);
     });
+    type_converter.addSourceMaterialization(&cast_materializer<plier::PyType>);
+    type_converter.addTargetMaterialization(
+        [](mlir::OpBuilder& /*builder*/, mlir::Type /*type*/, mlir::ValueRange inputs, mlir::Location /*loc*/)->mlir::Value
+        {
+            assert(inputs.size() == 1);
+            // TODO
+            return inputs[0];
+        });
+//    type_converter.addArgumentMaterialization(&cast_materializer<mlir::IntegerType>);
+//    type_converter.addArgumentMaterialization(&cast_materializer<mlir::FloatType>);
 
     mlir::OwningRewritePatternList patterns;
-    patterns.insert<FuncOpSignatureConversion,
-                    OpTypeConversion>(&getContext(), type_converter);
-    patterns.insert<ConstOpLowering, BinOpLowering,
-                    CallOpLowering, CastOpLowering,
-                    ExpandTuples>(&getContext());
 
-    auto apply_conv = [&]()
+    auto& ctx = getContext();
+    mlir::ConversionTarget target(ctx);
+    target.addDynamicallyLegalOp<mlir::FuncOp>(
+        [](mlir::FuncOp op)->bool
+        {
+            return !check_for_plier_types(op.getType());
+        });
+    target.addDynamicallyLegalOp<plier::CastOp>(
+        [&](plier::CastOp op)->bool
+        {
+            auto src_type = op.getOperand().getType();
+            auto dst_type = type_converter.convertType(op.getType());
+            return !dst_type || !is_supported_type(src_type) || !is_supported_type(dst_type);
+        });
+    target.addLegalOp<plier::GlobalOp>();
+    target.addDynamicallyLegalDialect<mlir::StandardOpsDialect>(
+        [](mlir::Operation* op)->bool
+        {
+            return !llvm::any_of(op->getOperandTypes(), &check_for_plier_types) &&
+                   !llvm::any_of(op->getResultTypes(), &check_for_plier_types);
+        });
+    target.addDynamicallyLegalOp<mlir::CondBranchOp>(
+        [](mlir::CondBranchOp op)
+        {
+            return !check_op_for_plier_types(op.getCondition()) &&
+                   !llvm::any_of(op.getTrueOperands(), &check_op_for_plier_types) &&
+                   !llvm::any_of(op.getFalseOperands(), &check_op_for_plier_types);
+        });
+
+    mlir::populateFuncOpTypeConversionPattern(patterns, &ctx, type_converter);
+    patterns.insert<
+        ConstOpLowering,
+        ReturnOpLowering,
+        SelectOpLowering,
+        CondBrOpLowering,
+        CastOpLowering,
+        BinOpLowering,
+        CallOpLowering
+        >(type_converter, &ctx);
+
+    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
     {
-        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-    };
+        signalPassFailure();
+        return;
+    }
 
-    apply_conv();
+    patterns.clear();
+    patterns.insert<
+        CastOpLowering
+        >(type_converter, &ctx);
+    // final casts cleanup, investigate how to get rid of that
+    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
+    {
+        signalPassFailure();
+        return;
+    }
 }
 
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(std::make_unique<PlierToStdPass>());
+    pm.addPass(mlir::createCanonicalizerPass());
 }
 }
 

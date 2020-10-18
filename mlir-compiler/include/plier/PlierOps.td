@@ -93,8 +93,7 @@ def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
     let arguments = (ins
                      Variadic<AnyType>:$args);
 
-    let results = (outs Variadic<AnyType>);
-    let hasFolder = 1;
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::ValueRange args">
@@ -108,7 +107,6 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
                      UI32Attr:$index);
 
     let results = (outs AnyType);
-    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, "
@@ -131,7 +129,7 @@ def IternextOp : Plier_Op<"iternext", []> {
     let arguments = (ins
                      AnyType:$value);
 
-    let results = (outs Variadic<AnyType>);
+    let results = (outs AnyType);
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -140,11 +138,9 @@ def IternextOp : Plier_Op<"iternext", []> {
 
 def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
     let arguments = (ins
-                     AnyType:$value,
-                     Optional<AnyType>:$second_val);
+                     AnyType:$value);
 
     let results = (outs AnyType);
-    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
@@ -153,11 +149,9 @@ def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
 
 def PairsecondOp : Plier_Op<"pair_second", [NoSideEffect]> {
     let arguments = (ins
-                     AnyType:$value,
-                     Optional<AnyType>:$second_val);
+                     AnyType:$value);
 
     let results = (outs AnyType);
-    let hasFolder = 1;
 
     let builders = [
      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
