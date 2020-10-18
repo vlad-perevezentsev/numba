@@ -691,9 +691,14 @@ void PlierToStdPass::runOnOperation()
         });
 
     mlir::populateFuncOpTypeConversionPattern(patterns, &ctx, type_converter);
-    patterns.insert<ConstOpLowering, CastOpLowering, ReturnOpLowering,
-                    BinOpLowering, CallOpLowering, SelectOpLowering>
-        (type_converter, &ctx);
+    patterns.insert<
+        ConstOpLowering,
+        CastOpLowering,
+        ReturnOpLowering,
+        BinOpLowering,
+        CallOpLowering,
+        SelectOpLowering
+        >(type_converter, &ctx);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
     {
