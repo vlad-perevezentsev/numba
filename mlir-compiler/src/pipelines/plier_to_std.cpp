@@ -250,10 +250,30 @@ struct ReturnOpLowering : public mlir::OpConversionPattern<mlir::ReturnOp>
         {
             rewriter.create<mlir::ReturnOp>(op.getLoc(), new_vals);
             rewriter.eraseOp(op);
-            llvm::errs() << "ReturnOpLowering 1\n";
             return mlir::success();
         }
-        llvm::errs() << "ReturnOpLowering 2\n";
+        return mlir::failure();
+    }
+};
+
+struct SelectOpLowering : public mlir::OpConversionPattern<mlir::SelectOp>
+{
+    using mlir::OpConversionPattern<mlir::SelectOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::SelectOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
+    {
+        assert(operands.size() == 3);
+        auto true_val = operands[1];
+        auto false_val = operands[2];
+        if (true_val.getType() == false_val.getType() &&
+            true_val.getType() != op.getType())
+        {
+            auto cond = operands[0];
+            rewriter.replaceOpWithNewOp<mlir::SelectOp>(op, cond, true_val, false_val);
+            return mlir::success();
+        }
         return mlir::failure();
     }
 };
@@ -445,13 +465,13 @@ struct BinOpLowering : public mlir::OpConversionPattern<plier::BinOp>
     }
 };
 
-mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& rewriter)
+mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
 {
-    if (op.getNumOperands() != 2)
+    if (operands.size() != 2)
     {
         return mlir::failure();
     }
-    auto val = op.getOperand(1);
+    auto val = operands[1];
     bool success = false;
     auto replace_op = [&](mlir::Value val)
     {
@@ -469,39 +489,46 @@ mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& r
     return mlir::success(success);
 }
 
-using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, mlir::PatternRewriter&);
+using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter&);
 const constexpr std::pair<llvm::StringRef, call_lowerer_func_t> builtin_calls[] = {
     {"<class 'bool'>", &lower_bool_cast},
 };
 
-struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
+struct CallOpLowering : public mlir::OpConversionPattern<plier::PyCallOp>
 {
-    using mlir::OpRewritePattern<plier::PyCallOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<plier::PyCallOp>::OpConversionPattern;
 
-    mlir::LogicalResult
-    matchAndRewrite(plier::PyCallOp op, mlir::PatternRewriter& rewriter) const override
+    mlir::LogicalResult matchAndRewrite(
+        plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
-        if (op.getNumOperands() == 0)
+        llvm::errs() << "CallOpLowering\n";
+        if (operands.empty())
         {
+            llvm::errs() << "CallOpLowering 1\n";
             return mlir::failure();
         }
-        auto func_type = op.getOperand(0).getType();
+        auto func_type = operands[0].getType();
         if (!func_type.isa<plier::PyType>())
         {
+            llvm::errs() << "CallOpLowering 2\n";
             return mlir::failure();
         }
         auto name = func_type.cast<plier::PyType>().getName();
         if (!name.consume_front("Function(") || !name.consume_back(")"))
         {
+            llvm::errs() << "CallOpLowering 3\n";
             return mlir::failure();
         }
         for (auto& c : builtin_calls)
         {
             if (c.first == name)
             {
-                return c.second(op, rewriter);
+                llvm::errs() << "CallOpLowering 4\n";
+                return c.second(op, operands, rewriter);
             }
         }
+        llvm::errs() << "CallOpLowering 5\n";
         return mlir::failure();
     }
 };
@@ -659,12 +686,13 @@ void PlierToStdPass::runOnOperation()
     target.addDynamicallyLegalDialect<mlir::StandardOpsDialect>(
         [](mlir::Operation* op)->bool
         {
-            return !llvm::any_of(op->getOperandTypes(), &check_for_plier_types);
+            return !llvm::any_of(op->getOperandTypes(), &check_for_plier_types) ||
+                   !llvm::any_of(op->getResultTypes(), &check_for_plier_types);
         });
 
     mlir::populateFuncOpTypeConversionPattern(patterns, &ctx, type_converter);
     patterns.insert<ConstOpLowering, CastOpLowering, ReturnOpLowering,
-                    BinOpLowering>
+                    BinOpLowering, CallOpLowering, SelectOpLowering>
         (type_converter, &ctx);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
