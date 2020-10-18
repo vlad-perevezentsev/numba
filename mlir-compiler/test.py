@@ -1,4 +1,5 @@
 import numba
+import numpy as np
 
 _tests_total = 0
 _tests_passes = 0
@@ -6,6 +7,9 @@ _failed_tests = []
 
 def ret(a):
     return a
+
+def const():
+    return 42
 
 def sum1(a):
     return a + 42
@@ -40,12 +44,18 @@ def tuple(a,b,c):
     t = (a,b,c)
     return t[0] + t[1] + t[2]
 
-def loop(n):
+def arr_loop():
+    res = 0
+    arr = [1,2,3]
+    for i in arr:
+        res = res + i
+    return res
+
+def range_loop(n):
     res = 0
     for i in range(n):
         res = res + i
     return res
-
 
 def test(func, params):
     global _tests_total
@@ -67,8 +77,10 @@ def test(func, params):
         print('FAILED')
         _failed_tests.append(test_name)
 
+print('=========================================================')
 
 test(ret, (7,))
+test(const, ())
 test(sum1, (5,))
 test(sum2, (3,4))
 test(cond, (5,6))
@@ -79,7 +91,9 @@ test(jump, (7,8))
 test(call, (1,2,3))
 test(tuple, (1,2,3))
 test(tuple, (1,2.0,3))
-test(loop, (8,))
+test(arr_loop, ())
+test(range_loop, (8,))
+test(sum2, (np.asarray([1,2,3]),np.asarray([4,5,6])))
 
 print(f'Tests passed: {_tests_passes}/{_tests_total}')
 if (len(_failed_tests) != 0):
