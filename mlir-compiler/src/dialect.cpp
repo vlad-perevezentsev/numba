@@ -145,19 +145,19 @@ void BuildTupleOp::build(OpBuilder &builder, OperationState &state,
                         PyType::getUndefined(state.getContext()), args);
 }
 
-mlir::LogicalResult BuildTupleOp::fold(
-    llvm::ArrayRef<mlir::Attribute> /*operands*/,
-    llvm::SmallVectorImpl<mlir::OpFoldResult> &results)
-{
-    auto res_types = getResultTypes();
-    auto args = getOperands();
-    if (res_types.size() == args.size())
-    {
-        std::copy(args.begin(), args.end(), std::back_inserter(results));
-        return mlir::success();
-    }
-    return mlir::failure();
-}
+//mlir::LogicalResult BuildTupleOp::fold(
+//    llvm::ArrayRef<mlir::Attribute> /*operands*/,
+//    llvm::SmallVectorImpl<mlir::OpFoldResult> &results)
+//{
+//    auto res_types = getResultTypes();
+//    auto args = getOperands();
+//    if (res_types.size() == args.size())
+//    {
+//        std::copy(args.begin(), args.end(), std::back_inserter(results));
+//        return mlir::success();
+//    }
+//    return mlir::failure();
+//}
 
 void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
                             ::mlir::Value value, ::mlir::Value index_var,
@@ -168,17 +168,17 @@ void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
                            value, index_var, index);
 }
 
-mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
-{
-    auto index = this->index();
-    auto args = getOperands();
-    if ((index + 1) < args.size() && // skip last arg
-        args[index].getType() == getResult().getType())
-    {
-        return args[index];
-    }
-    return nullptr;
-}
+//mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+//{
+//    auto index = this->index();
+//    auto args = getOperands();
+//    if ((index + 1) < args.size() && // skip last arg
+//        args[index].getType() == getResult().getType())
+//    {
+//        return args[index];
+//    }
+//    return nullptr;
+//}
 
 void GetiterOp::build(OpBuilder &builder, OperationState &state,
                             ::mlir::Value value)
@@ -201,14 +201,14 @@ void PairfirstOp::build(OpBuilder &builder, OperationState &state,
                        value);
 }
 
-mlir::OpFoldResult PairfirstOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
-{
-    if (getNumOperands() == 2)
-    {
-        return getOperand(0);
-    }
-    return nullptr;
-}
+//mlir::OpFoldResult PairfirstOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+//{
+//    if (getNumOperands() == 2)
+//    {
+//        return getOperand(0);
+//    }
+//    return nullptr;
+//}
 
 void PairsecondOp::build(OpBuilder &builder, OperationState &state,
                             ::mlir::Value value)
@@ -217,14 +217,14 @@ void PairsecondOp::build(OpBuilder &builder, OperationState &state,
                         PyType::getUndefined(state.getContext()), value);
 }
 
-mlir::OpFoldResult PairsecondOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
-{
-    if (getNumOperands() == 2)
-    {
-        return getOperand(1);
-    }
-    return nullptr;
-}
+//mlir::OpFoldResult PairsecondOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
+//{
+//    if (getNumOperands() == 2)
+//    {
+//        return getOperand(1);
+//    }
+//    return nullptr;
+//}
 
 }
 
