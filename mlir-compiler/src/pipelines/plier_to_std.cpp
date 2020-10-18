@@ -132,6 +132,17 @@ mlir::Type map_tuple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
     return mlir::TupleType::get(types, &ctx);
 }
 
+mlir::Type map_func_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
+{
+    if (name.consume_front("Function(") &&
+        name.consume_front("<class 'bool'>") && // TODO unhardcode;
+        name.consume_front(")"))
+    {
+        return mlir::FunctionType::get({}, {}, &ctx);
+    }
+    return nullptr;
+}
+
 mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
     using func_t = mlir::Type(*)(mlir::MLIRContext& ctx, llvm::StringRef& name);
@@ -143,6 +154,7 @@ mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
         &map_pair_type,
         &map_unituple_type,
         &map_tuple_type,
+        &map_func_type,
     };
     for (auto h : handlers)
     {
@@ -683,6 +695,7 @@ void PlierToStdPass::runOnOperation()
             auto dst_type = type_converter.convertType(op.getType());
             return !dst_type || !is_supported_type(src_type) || !is_supported_type(dst_type);
         });
+    target.addLegalOp<plier::GlobalOp>();
     target.addDynamicallyLegalDialect<mlir::StandardOpsDialect>(
         [](mlir::Operation* op)->bool
         {
