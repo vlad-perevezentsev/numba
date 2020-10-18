@@ -203,9 +203,11 @@ struct ConstOpLowering : public mlir::OpConversionPattern<plier::ConstOp>
     using mlir::OpConversionPattern<plier::ConstOp>::OpConversionPattern;
 
     mlir::LogicalResult matchAndRewrite(
-        plier::ConstOp op, llvm::ArrayRef<mlir::Value> /*operands*/,
-        mlir::ConversionPatternRewriter &rewriter) const
+        plier::ConstOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
+        (void)operands;
+        assert(operands.empty());
         auto value = op.val();
         if (!is_supported_type(value.getType()))
         {
@@ -222,9 +224,8 @@ struct ReturnOpLowering : public mlir::OpConversionPattern<mlir::ReturnOp>
 
     mlir::LogicalResult matchAndRewrite(
         mlir::ReturnOp op, llvm::ArrayRef<mlir::Value> operands,
-        mlir::ConversionPatternRewriter &rewriter) const
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
-        llvm::errs() << "ReturnOpLowering\n";
         auto func = mlir::cast<mlir::FuncOp>(op.getParentOp());
         auto res_types = func.getType().getResults();
         assert(res_types.size() == operands.size());
@@ -234,10 +235,6 @@ struct ReturnOpLowering : public mlir::OpConversionPattern<mlir::ReturnOp>
         {
             auto src = std::get<0>(it);
             auto dst = std::get<1>(it);
-            src.getType().dump();
-            llvm::errs() << "-";
-            dst.dump();
-            llvm::errs() << "\n";
             if (src.getType() != dst)
             {
                 auto new_op = rewriter.create<plier::CastOp>(op.getLoc(), dst, src);
@@ -363,32 +360,34 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
     llvm_unreachable("Unhandled cast");
 }
 
-struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
+struct BinOpLowering : public mlir::OpConversionPattern<plier::BinOp>
 {
-    using mlir::OpRewritePattern<plier::BinOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<plier::BinOp>::OpConversionPattern;
 
-    mlir::LogicalResult matchAndRewrite(plier::BinOp op,
-                                        mlir::PatternRewriter& rewriter) const
+    mlir::LogicalResult matchAndRewrite(
+        plier::BinOp op, llvm::ArrayRef<mlir::Value> operands,
+        mlir::ConversionPatternRewriter &rewriter) const override
     {
-        assert(op.getNumOperands() == 2);
-        auto type0 = op.getOperand(0).getType();
-        auto type1 = op.getOperand(1).getType();
+        assert(operands.size() == 2);
+        auto type0 = operands[0].getType();
+        auto type1 = operands[1].getType();
         if (!is_supported_type(type0) || !is_supported_type(type1))
         {
             return mlir::failure();
         }
         mlir::Type final_type;
-        std::array<mlir::Value, 2> operands;
+        std::array<mlir::Value, 2> converted_operands;
         if (type0 != type1)
         {
             final_type = coerce(type0, type1);
-            operands = {do_cast(final_type, op.getOperand(0), rewriter),
-                        do_cast(final_type, op.getOperand(1), rewriter)};
+            converted_operands = {
+                do_cast(final_type, operands[0], rewriter),
+                do_cast(final_type, operands[1], rewriter)};
         }
         else
         {
             final_type = type0;
-            operands = {op.getOperand(0), op.getOperand(1)};
+            converted_operands = {operands[0], operands[1]};
         }
         assert(static_cast<bool>(final_type));
 
@@ -426,7 +425,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {
                 if (h.type == op.op())
                 {
-                    (h.*mem)(op, rewriter, final_type, operands);
+                    (h.*mem)(op, rewriter, final_type, converted_operands);
                     return mlir::success();
                 }
             }
@@ -664,7 +663,8 @@ void PlierToStdPass::runOnOperation()
         });
 
     mlir::populateFuncOpTypeConversionPattern(patterns, &ctx, type_converter);
-    patterns.insert<ConstOpLowering, CastOpLowering, ReturnOpLowering>
+    patterns.insert<ConstOpLowering, CastOpLowering, ReturnOpLowering,
+                    BinOpLowering>
         (type_converter, &ctx);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, patterns)))
