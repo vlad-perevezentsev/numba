@@ -520,12 +520,6 @@ struct CastOpLowering : public mlir::OpConversionPattern<plier::CastOp>
         assert(nullptr != converter);
         auto src_type = operands[0].getType();
         auto dst_type = converter->convertType(op.getType());
-//        auto dst_type = op.getType();
-        llvm::errs() << "CastOpLowering ";
-        src_type.dump();
-        llvm::errs() << " ";
-        dst_type.dump();
-
         if (dst_type && is_supported_type(src_type) && is_supported_type(dst_type))
         {
             auto new_op = do_cast(dst_type, op.getOperand(), rewriter);
@@ -636,40 +630,18 @@ void PlierToStdPass::runOnOperation()
     type_converter.addSourceMaterialization(
         [](mlir::OpBuilder& builder, plier::Type type, mlir::ValueRange inputs, mlir::Location loc)->mlir::Value
         {
-            llvm::errs() << "SourceMaterialization ";
-            type.dump();
-            llvm::errs() << "\n";
             assert(inputs.size() == 1);
-            inputs[0].dump();
-            llvm::errs() << "\n";
             return builder.create<plier::CastOp>(loc, type, inputs[0]);
         });
     type_converter.addTargetMaterialization(
-        [](mlir::OpBuilder& builder, plier::Type type, mlir::ValueRange inputs, mlir::Location loc)->mlir::Value
+        [](mlir::OpBuilder& /*builder*/, plier::Type /*type*/, mlir::ValueRange inputs, mlir::Location /*loc*/)->mlir::Value
         {
-            llvm::errs() << "TargetMaterialization\n";
-            type.dump();
-            llvm::errs() << "\n";
             assert(inputs.size() == 1);
-            inputs[0].dump();
-            llvm::errs() << "\n";
-//            return builder.create<plier::CastOp>(loc, type, inputs[0]);
+            // TODO
             return inputs[0];
         });
 
     mlir::OwningRewritePatternList patterns;
-//    patterns.insert<FuncOpSignatureConversion,
-//                    OpTypeConversion>(&getContext(), type_converter);
-//    patterns.insert<ConstOpLowering, BinOpLowering,
-//                    CallOpLowering, CastOpLowering,
-//                    ExpandTuples>(&getContext());
-
-//    auto apply_conv = [&]()
-//    {
-//        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-//    };
-
-//    apply_conv();
 
     auto& ctx = getContext();
     mlir::ConversionTarget target(ctx);
@@ -683,20 +655,12 @@ void PlierToStdPass::runOnOperation()
         {
             auto src_type = op.getOperand().getType();
             auto dst_type = type_converter.convertType(op.getType());
-            llvm::errs() << "check cast ";
-            src_type.dump();
-            llvm::errs() << " ";
-            dst_type.dump();
-            llvm::errs() << "\n";
-            return !is_supported_type(src_type) || !is_supported_type(dst_type);
+            return !dst_type || !is_supported_type(src_type) || !is_supported_type(dst_type);
         });
-//    target.addLegalDialect<mlir::StandardOpsDialect>();
     target.addDynamicallyLegalDialect<mlir::StandardOpsDialect>(
         [](mlir::Operation* op)->bool
         {
-            auto res = !llvm::any_of(op->getOperandTypes(), &check_for_plier_types);
-            llvm::errs() << "Check op " << op->getName() << " " << res << "\n";
-            return res;
+            return !llvm::any_of(op->getOperandTypes(), &check_for_plier_types);
         });
 
     mlir::populateFuncOpTypeConversionPattern(patterns, &ctx, type_converter);
