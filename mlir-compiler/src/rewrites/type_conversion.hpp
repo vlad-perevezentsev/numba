@@ -10,8 +10,8 @@ class TypeConverter;
 
 struct FuncOpSignatureConversion : public mlir::OpRewritePattern<mlir::FuncOp>
 {
-    FuncOpSignatureConversion(mlir::MLIRContext* ctx,
-                              mlir::TypeConverter& conv);
+    FuncOpSignatureConversion(mlir::TypeConverter& conv,
+                              mlir::MLIRContext* ctx);
 
     /// Hook for derived classes to implement combined matching and rewriting.
     mlir::LogicalResult

@@ -55,8 +55,8 @@ mlir::LogicalResult convertRegionTypes(
 }
 }
 
-FuncOpSignatureConversion::FuncOpSignatureConversion(
-    mlir::MLIRContext* ctx, mlir::TypeConverter& conv)
+FuncOpSignatureConversion::FuncOpSignatureConversion(mlir::TypeConverter& conv,
+    mlir::MLIRContext* ctx)
     : OpRewritePattern(ctx), converter(conv) {}
 
 mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
