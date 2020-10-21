@@ -10,12 +10,71 @@
 #include "plier/dialect.hpp"
 
 #include "pipelines/plier_to_std.hpp"
+#include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
 
+#include <cctype>
+
 namespace
 {
+bool parse_layout(llvm::StringRef& name)
+{
+    return name.consume_back("C"); // TODO
+}
+
+template<typename T>
+bool consume_int_back(llvm::StringRef& name, T& result)
+{
+    unsigned len = 0;
+    auto tmp_name = name;
+    while (!tmp_name.empty() && std::isdigit(tmp_name.back()))
+    {
+        ++len;
+        tmp_name = tmp_name.drop_back();
+    }
+    tmp_name = name.substr(name.size() - len);
+    if (!tmp_name.consumeInteger<T>(10, result))
+    {
+        name = name.substr(0, name.size() - len);
+        return true;
+    }
+    return false;
+}
+
+mlir::Type map_array_type(mlir::MLIRContext& ctx, mlir::TypeConverter& conveter,
+                          llvm::StringRef& name)
+{
+    unsigned num_dims = 0;
+    if (name.consume_front("array(") &&
+        name.consume_back(")") &&
+        parse_layout(name) &&
+        name.consume_back(", ") &&
+        name.consume_back("d") &&
+        consume_int_back(name, num_dims) &&
+        name.consume_back(", ") &&
+        !name.empty())
+    {
+        if (auto type = conveter.convertType(plier::PyType::get(&ctx, name)))
+        {
+            llvm::SmallVector<int64_t, 8> shape(num_dims, -1);
+            return mlir::MemRefType::get(shape, type);
+        }
+    }
+    return nullptr;
+}
+
+
+mlir::Type map_plier_type(mlir::TypeConverter& converter, mlir::Type type)
+{
+    if (type.isa<plier::PyType>())
+    {
+        auto name = type.cast<plier::PyType>().getName();
+        return map_array_type(*type.getContext(), converter, name);
+    }
+    return nullptr;
+}
 
 struct PlierToLinalgPass :
     public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
@@ -32,25 +91,24 @@ struct PlierToLinalgPass :
 
 void PlierToLinalgPass::runOnOperation()
 {
-//    mlir::TypeConverter type_converter;
-//    type_converter.addConversion([](plier::Type type)->llvm::Optional<mlir::Type>
-//    {
-//        return map_plier_type(type);
-//    });
+    mlir::TypeConverter type_converter;
+    populate_std_type_converter(type_converter);
+    type_converter.addConversion([&](plier::PyType type)->llvm::Optional<mlir::Type>
+    {
+        auto ret =  map_plier_type(type_converter, type);
+        if (!ret)
+        {
+            return llvm::None;
+        }
+        return ret;
+    });
 
     mlir::OwningRewritePatternList patterns;
-//    patterns.insert<FuncOpSignatureConversion,
-//                    OpTypeConversion>(&getContext(), type_converter);
-//    patterns.insert<ConstOpLowering, BinOpLowering,
-//                    CallOpLowering, CastOpLowering,
-//                    ExpandTuples>(&getContext());
+    patterns.insert<
+        FuncOpSignatureConversion
+        >(type_converter, &getContext());
 
-    auto apply_conv = [&]()
-    {
-        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-    };
-
-    apply_conv();
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
 
 void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)

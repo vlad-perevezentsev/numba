@@ -738,10 +738,7 @@ mlir::Value cast_materializer(
 void PlierToStdPass::runOnOperation()
 {
     mlir::TypeConverter type_converter;
-    type_converter.addConversion([](mlir::Type type)->llvm::Optional<mlir::Type>
-    {
-        return map_plier_type(type);
-    });
+    populate_std_type_converter(type_converter);
 
     mlir::OwningRewritePatternList patterns;
 
@@ -766,6 +763,18 @@ void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
 }
 }
 
+void populate_std_type_converter(mlir::TypeConverter& converter)
+{
+    converter.addConversion([](mlir::Type type)->llvm::Optional<mlir::Type>
+    {
+        auto ret = map_plier_type(type);
+        if (!ret)
+        {
+            return llvm::None;
+        }
+        return ret;
+    });
+}
 
 void register_plier_to_std_pipeline(PipelineRegistry& registry)
 {
