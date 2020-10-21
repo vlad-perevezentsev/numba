@@ -7,12 +7,6 @@
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include "plier/PlierOpsEnums.h.inc"
-
-namespace plier
-{
-using namespace mlir; // TODO: remove
-}
-
 #include "plier/PlierOpsDialect.h.inc"
 #define GET_OP_CLASSES
 #include "plier/PlierOps.h.inc"

@@ -26,7 +26,7 @@ def ArgOp : Plier_Op<"arg", [NoSideEffect]> {
     let hasFolder = 1;
 
     let builders = [
-        OpBuilder<"OpBuilder &b, OperationState &state, unsigned index, StringRef name">
+        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, unsigned index, ::mlir::StringRef name">
     ];
 }
 
@@ -37,7 +37,7 @@ def ConstOp : Plier_Op<"const", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Attribute val">
+        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Attribute val">
     ];
 }
 
@@ -48,7 +48,7 @@ def GlobalOp : Plier_Op<"global", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [
-      OpBuilder<"OpBuilder &b, OperationState &state, StringRef name">
+      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::StringRef name">
   ];
 }
 
@@ -61,7 +61,7 @@ def BinOp : Plier_Op<"binop", []> {
   let results = (outs AnyType);
 
   let builders = [
-      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value rhs, ::mlir::Value lhs, StringRef op">
+      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value rhs, ::mlir::Value lhs, ::mlir::StringRef op">
   ];
 }
 
@@ -83,7 +83,7 @@ def PyCallOp : Plier_Op<"call", []> {
   let results = (outs AnyType);
 
   let builders = [
-      OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value func, "
+      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value func, "
                 "::mlir::ValueRange args, "
                 "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>> kwargs">
   ];
@@ -96,7 +96,7 @@ def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::ValueRange args">
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::ValueRange args">
 ];
 }
 
@@ -109,7 +109,7 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, "
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, "
                "::mlir::Value index_var, unsigned index">
 ];
 }
@@ -121,7 +121,7 @@ def GetiterOp : Plier_Op<"getiter", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
 ];
 }
 
@@ -132,7 +132,7 @@ def IternextOp : Plier_Op<"iternext", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
 ];
 }
 
@@ -143,7 +143,7 @@ def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
 ];
 }
 
@@ -154,7 +154,7 @@ def PairsecondOp : Plier_Op<"pair_second", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value">
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
 ];
 }
 
@@ -171,7 +171,7 @@ def GetattrOp : Plier_Op<"getattr", []> {
     let results = (outs AnyType);
 
     let builders = [
-        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, ::mlir::StringRef name">
+        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, ::mlir::StringRef name">
     ];
 }
 

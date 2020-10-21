@@ -648,7 +648,7 @@ struct ExpandTuples : public mlir::RewritePattern
     }
 
     mlir::LogicalResult
-    matchAndRewrite(plier::Operation* op, mlir::PatternRewriter& rewriter) const override
+    matchAndRewrite(mlir::Operation* op, mlir::PatternRewriter& rewriter) const override
     {
         if (op->getResultTypes().size() != 1 ||
             !op->getResultTypes()[0].isa<mlir::TupleType>() ||
@@ -738,7 +738,7 @@ mlir::Value cast_materializer(
 void PlierToStdPass::runOnOperation()
 {
     mlir::TypeConverter type_converter;
-    type_converter.addConversion([](plier::Type type)->llvm::Optional<mlir::Type>
+    type_converter.addConversion([](mlir::Type type)->llvm::Optional<mlir::Type>
     {
         return map_plier_type(type);
     });

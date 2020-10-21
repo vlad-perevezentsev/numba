@@ -60,7 +60,7 @@ PyType PyType::get(mlir::MLIRContext* context, llvm::StringRef name)
     return Base::get(context, name);
 }
 
-PyType PyType::getUndefined(MLIRContext* context)
+PyType PyType::getUndefined(mlir::MLIRContext* context)
 {
     return Base::get(context, "");
 }
@@ -119,7 +119,7 @@ mlir::OpFoldResult CastOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
     return nullptr;
 }
 
-void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func,
+void PyCallOp::build(mlir::OpBuilder &builder, mlir::OperationState &state, mlir::Value func,
                      mlir::ValueRange args,
                      mlir::ArrayRef<std::pair<std::string, mlir::Value>> kwargs) {
     auto ctx = builder.getContext();
@@ -138,7 +138,7 @@ void PyCallOp::build(OpBuilder &builder, OperationState &state, mlir::Value func
         func, all_args, kw_start, mlir::ArrayAttr::get(kw_names, ctx));
 }
 
-void BuildTupleOp::build(OpBuilder &builder, OperationState &state,
+void BuildTupleOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                          ::mlir::ValueRange args)
 {
     BuildTupleOp::build(builder, state,
@@ -159,7 +159,7 @@ void BuildTupleOp::build(OpBuilder &builder, OperationState &state,
 //    return mlir::failure();
 //}
 
-void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
+void StaticGetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value, ::mlir::Value index_var,
                             unsigned int index)
 {
@@ -180,21 +180,21 @@ void StaticGetItemOp::build(OpBuilder &builder, OperationState &state,
 //    return nullptr;
 //}
 
-void GetiterOp::build(OpBuilder &builder, OperationState &state,
+void GetiterOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value)
 {
     GetiterOp::build(builder, state, PyType::getUndefined(state.getContext()),
                      value);
 }
 
-void IternextOp::build(OpBuilder &builder, OperationState &state,
+void IternextOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value)
 {
     IternextOp::build(builder, state, PyType::getUndefined(state.getContext()),
                       value);
 }
 
-void PairfirstOp::build(OpBuilder &builder, OperationState &state,
+void PairfirstOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value)
 {
     PairfirstOp::build(builder, state, PyType::getUndefined(state.getContext()),
@@ -210,7 +210,7 @@ void PairfirstOp::build(OpBuilder &builder, OperationState &state,
 //    return nullptr;
 //}
 
-void PairsecondOp::build(OpBuilder &builder, OperationState &state,
+void PairsecondOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                          ::mlir::Value value)
 {
     PairsecondOp::build(builder, state,
