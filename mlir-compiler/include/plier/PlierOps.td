@@ -163,4 +163,16 @@ def DelOp : Plier_Op<"del", []> {
                      AnyType:$value);
 }
 
+def GetattrOp : Plier_Op<"getattr", []> {
+    let arguments = (ins
+                     AnyType:$value,
+                     StrAttr:$name);
+
+    let results = (outs AnyType);
+
+    let builders = [
+        OpBuilder<"OpBuilder &b, OperationState &state, ::mlir::Value value, ::mlir::StringRef name">
+    ];
+}
+
 #endif // PLIER_OPS

@@ -211,7 +211,7 @@ void PairfirstOp::build(OpBuilder &builder, OperationState &state,
 //}
 
 void PairsecondOp::build(OpBuilder &builder, OperationState &state,
-                            ::mlir::Value value)
+                         ::mlir::Value value)
 {
     PairsecondOp::build(builder, state,
                         PyType::getUndefined(state.getContext()), value);
@@ -225,6 +225,12 @@ void PairsecondOp::build(OpBuilder &builder, OperationState &state,
 //    }
 //    return nullptr;
 //}
+
+void GetattrOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                      mlir::Value value, mlir::StringRef name) {
+    GetattrOp::build(builder, state, PyType::getUndefined(state.getContext()),
+                     value, name);
+}
 
 }
 

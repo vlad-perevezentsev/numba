@@ -291,6 +291,7 @@ private:
             {"iternext", &plier_lowerer::lower_simple<plier::IternextOp>},
             {"pair_first", &plier_lowerer::lower_simple<plier::PairfirstOp>},
             {"pair_second", &plier_lowerer::lower_simple<plier::PairsecondOp>},
+            {"getattr", &plier_lowerer::lower_getattr},
         };
         for (auto& h : handlers)
         {
@@ -407,6 +408,14 @@ private:
         }
 
         report_error(llvm::Twine("resolve_op not handled: \"") + py::str(op).cast<std::string>() + "\"");
+    }
+
+    mlir::Value lower_getattr(const py::handle& inst)
+    {
+        auto val = inst.attr("value");
+        auto value = loadvar(val);
+        auto name = val.attr("name").cast<std::string>();
+        return builder.create<plier::GetattrOp>(get_current_loc(), value, name);
     }
 
     void storevar(mlir::Value val, const py::handle& inst)
