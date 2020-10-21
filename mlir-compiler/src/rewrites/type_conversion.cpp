@@ -68,8 +68,8 @@ mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
     mlir::TypeConverter::SignatureConversion result(type.getNumInputs());
     llvm::SmallVector<mlir::Type, 1> newResults;
     if (mlir::failed(converter.convertSignatureArgs(type.getInputs(), result)) ||
-            mlir::failed(converter.convertTypes(type.getResults(), newResults)) ||
-            mlir::failed(convertRegionTypes(&funcOp.getBody(), converter, false)))
+        mlir::failed(converter.convertTypes(type.getResults(), newResults)) ||
+        mlir::failed(convertRegionTypes(&funcOp.getBody(), converter, false)))
     {
         return mlir::failure();
     }

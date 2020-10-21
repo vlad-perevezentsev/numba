@@ -738,6 +738,8 @@ mlir::Value cast_materializer(
 void PlierToStdPass::runOnOperation()
 {
     mlir::TypeConverter type_converter;
+    // Convert unknown types to itself
+    type_converter.addConversion([](mlir::Type type) { return type; });
     populate_std_type_converter(type_converter);
 
     mlir::OwningRewritePatternList patterns;
