@@ -76,6 +76,78 @@ mlir::Type map_plier_type(mlir::TypeConverter& converter, mlir::Type type)
     return nullptr;
 }
 
+llvm::StringRef extract_bound_func_name(llvm::StringRef name)
+{
+    auto len = name.find(' ');
+    return name.substr(0, len);
+}
+
+struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
+{
+    using check_t = mlir::LogicalResult(*)(llvm::StringRef, llvm::ArrayRef<mlir::Type>);
+    using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::StringRef, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
+    using resolver_t = std::pair<check_t, func_t>;
+
+    CallOpLowering(mlir::TypeConverter &/*typeConverter*/,
+                   mlir::MLIRContext *context,
+                   llvm::ArrayRef<resolver_t> resolvers):
+        OpRewritePattern(context), resolvers(resolvers) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::PyCallOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto operands = op.getOperands();
+        if (operands.empty())
+        {
+            return mlir::failure();
+        }
+        auto func_type = operands[0].getType();
+        if (!func_type.isa<plier::PyType>())
+        {
+            return mlir::failure();
+        }
+        auto name = func_type.cast<plier::PyType>().getName();
+        llvm::SmallVector<mlir::Type, 8> arg_types;
+        llvm::SmallVector<mlir::Value, 8> args;
+        if (name.consume_front("Function(") && name.consume_back(")"))
+        {
+            llvm::copy(llvm::drop_begin(op.getOperandTypes(), 1), std::back_inserter(arg_types));
+            llvm::copy(llvm::drop_begin(op.getOperands(), 1), std::back_inserter(args));
+            // TODO kwargs
+        }
+        else if (name.consume_front("BoundFunction(") && name.consume_back(")"))
+        {
+            auto getattr = mlir::dyn_cast<plier::GetattrOp>(operands[0].getDefiningOp());
+            if (!getattr)
+            {
+                return mlir::failure();
+            }
+            arg_types.push_back(getattr.getOperand().getType());
+            args.push_back(getattr.getOperand());
+            llvm::copy(llvm::drop_begin(op.getOperandTypes(), 1), std::back_inserter(arg_types));
+            llvm::copy(llvm::drop_begin(op.getOperands(), 1), std::back_inserter(args));
+            name = extract_bound_func_name(name);
+            // TODO kwargs
+        }
+        else
+        {
+            return mlir::failure();
+        }
+        for (auto& c : resolvers)
+        {
+            if (mlir::succeeded(c.first(name, arg_types)))
+            {
+                return c.second(op, name, args, rewriter);
+            }
+        }
+
+        return mlir::failure();
+    }
+
+private:
+    llvm::ArrayRef<resolver_t> resolvers;
+};
+
 struct PlierToLinalgPass :
     public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
 {
@@ -109,6 +181,10 @@ void PlierToLinalgPass::runOnOperation()
     patterns.insert<
         FuncOpSignatureConversion
         >(type_converter, &getContext());
+
+    patterns.insert<
+        CallOpLowering
+        >(type_converter, &getContext(), llvm::None);
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
