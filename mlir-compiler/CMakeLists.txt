@@ -64,6 +64,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     MLIRTargetLLVMIR
     MLIRTransforms
     MLIRStandardToLLVM
+    MLIRLinalgTransforms
+    MLIRSCFToStandard
     )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

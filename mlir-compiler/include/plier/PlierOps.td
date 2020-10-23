@@ -163,7 +163,7 @@ def DelOp : Plier_Op<"del", []> {
                      AnyType:$value);
 }
 
-def GetattrOp : Plier_Op<"getattr", []> {
+def GetattrOp : Plier_Op<"getattr", [NoSideEffect]> {
     let arguments = (ins
                      AnyType:$value,
                      StrAttr:$name);
