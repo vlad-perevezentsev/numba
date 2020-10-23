@@ -2,6 +2,7 @@
 
 #include <mlir/IR/Dialect.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+#include <mlir/Dialect/Linalg/IR/LinalgOps.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -148,6 +149,47 @@ private:
     llvm::ArrayRef<resolver_t> resolvers;
 };
 
+mlir::LogicalResult numpy_check(llvm::StringRef name, llvm::ArrayRef<mlir::Type> types)
+{
+    return mlir::success(name == "array.sum"); // TODO
+}
+
+mlir::LogicalResult numpy_rewrite(
+    plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
+    mlir::PatternRewriter& rewriter)
+{
+    assert(args.size() == 1);
+    mlir::Value inputs[] = { args[0] };
+    auto elem_type = inputs[0].getType().cast<mlir::MemRefType>().getElementType();
+    auto res_type = mlir::MemRefType::get({}, elem_type);
+    auto loc = op.getLoc();
+    mlir::Value outputs[] = { rewriter.create<mlir::AllocaOp>(loc, res_type) };
+    mlir::AffineMap map[] = {
+        mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
+        mlir::AffineMap::get(1, 0, op.getContext()),
+    };
+    mlir::StringRef iterators[] = { "reduction" };
+    auto body = [](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+    {
+        assert(args.size() == 2);
+        mlir::Value res = builder.create<mlir::AddIOp>(loc, args[0], args[1]);
+        builder.create<mlir::linalg::YieldOp>(loc, res);
+    };
+    auto o = rewriter.create<mlir::linalg::GenericOp>(
+        loc,
+        llvm::makeArrayRef(inputs),
+        llvm::makeArrayRef(outputs),
+        llvm::makeArrayRef(map),
+        llvm::makeArrayRef(iterators),
+        llvm::StringRef(), // doc
+        llvm::StringRef(), // library call
+        nullptr, // symbol source
+        body);
+    mlir::Value res = rewriter.create<mlir::LoadOp>(loc, outputs[0]);
+    rewriter.replaceOp(op, res);
+    return mlir::failure();
+}
+
 struct PlierToLinalgPass :
     public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
 {
@@ -156,6 +198,7 @@ struct PlierToLinalgPass :
     {
         registry.insert<plier::PlierDialect>();
         registry.insert<mlir::StandardOpsDialect>();
+        registry.insert<mlir::linalg::LinalgDialect>();
     }
 
     void runOnOperation() override;
@@ -182,9 +225,13 @@ void PlierToLinalgPass::runOnOperation()
         FuncOpSignatureConversion
         >(type_converter, &getContext());
 
+    CallOpLowering::resolver_t resolvers[] = {
+        {numpy_check, numpy_rewrite}
+    };
+
     patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), llvm::None);
+        >(type_converter, &getContext(), resolvers);
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
