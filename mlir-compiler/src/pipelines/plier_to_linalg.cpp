@@ -187,9 +187,6 @@ mlir::LogicalResult numpy_rewrite(
         llvm::makeArrayRef(outputs),
         llvm::makeArrayRef(map),
         llvm::makeArrayRef(iterators),
-        llvm::StringRef(), // doc
-        llvm::StringRef(), // library call
-        nullptr, // symbol source
         body);
     mlir::Value res = rewriter.create<mlir::LoadOp>(loc, outputs[0]);
     rewriter.replaceOp(op, res);
