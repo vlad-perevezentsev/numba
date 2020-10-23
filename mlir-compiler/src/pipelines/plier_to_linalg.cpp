@@ -173,7 +173,7 @@ mlir::LogicalResult numpy_rewrite(
         mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
         mlir::AffineMap::get(1, 0, op.getContext()),
     };
-    mlir::StringRef iterators[] = { "parallel" };
+    mlir::StringRef iterators[] = { "reduction" };
     auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
     {
         assert(args.size() == 2);
