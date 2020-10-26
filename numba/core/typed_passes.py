@@ -20,6 +20,7 @@ from numba.core.ir_utils import (raise_on_unsupported_feature, warn_deprecated,
                                  build_definitions, compute_cfg_from_blocks)
 from numba.core import postproc
 
+from numba.core.lowering import _use_mlir
 
 @contextmanager
 def fallback_context(state, msg):
@@ -367,6 +368,9 @@ class NativeLowering(LoweringPass):
             with targetctx.push_code_library(library):
                 lower = lowering.Lower(targetctx, library, fndesc, interp,
                                        metadata=metadata)
+                if _use_mlir:
+                    setattr(lower, 'mlir_blob', state.mlir_blob)
+
                 lower.lower()
                 if not flags.no_cpython_wrapper:
                     lower.create_cpython_wrapper(flags.release_gil)
@@ -461,6 +465,47 @@ class NoPythonBackend(LoweringPass):
             metadata=state.metadata,
             reload_init=state.reload_init,
         )
+        return True
+
+@register_pass(mutates_CFG=True, analysis_only=False)
+class MlirBackend(LoweringPass):
+
+    _name = "mlir_backend"
+
+    def __init__(self):
+        # LoweringPass.__init__(self)
+        pass
+
+    def run_pass(self, state):
+        targetctx = state.targetctx
+        library = state.library
+        interp = state.func_ir  # why is it called this?!
+        typemap = state.typemap
+        restype = state.return_type
+        calltypes = state.calltypes
+        flags = state.flags
+        metadata = state.metadata
+
+        msg = ("Function %s failed at nopython "
+               "mode lowering" % (state.func_id.func_name,))
+        with fallback_context(state, msg):
+            # Lowering
+            fndesc = \
+                funcdesc.PythonFunctionDescriptor.from_specialized_function(
+                    interp, typemap, restype, calltypes,
+                    mangler=targetctx.mangler, inline=flags.forceinline,
+                    noalias=flags.noalias)
+            fn_name = fndesc.mangled_name
+
+        ctx = {}
+        ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': False}
+        ctx['typemap'] = lambda op: state.typemap[op.name]
+        ctx['fnargs'] = lambda: state.args
+        ctx['restype'] = lambda: state.return_type
+        ctx['fnname'] = lambda: fn_name
+        import mlir_compiler
+        mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)
+        setattr(state, 'mlir_blob', mod)
         return True
 
 

@@ -12,6 +12,7 @@
 .nfs*
 tags
 MANIFEST
+CMakeLists.txt.user
 
 build/
 docs/_build/

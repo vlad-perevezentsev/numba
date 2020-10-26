@@ -11,6 +11,7 @@ from numba.core.errors import (LoweringError, new_error_context, TypingError,
 from numba.core.funcdesc import default_mangler
 from numba.core.environment import Environment
 
+_use_mlir = True
 
 _VarArgItem = namedtuple("_VarArgItem", ("vararg", "index"))
 
@@ -170,8 +171,9 @@ class BaseLower(object):
         # Run target specific post lowering transformation
         self.context.post_lowering(self.module, self.library)
 
-        # Materialize LLVM Module
-        self.library.add_ir_module(self.module)
+        if not _use_mlir:
+            # Materialize LLVM Module
+            self.library.add_ir_module(self.module)
 
     def extract_function_arguments(self):
         self.fnargs = self.call_conv.decode_arguments(self.builder,
@@ -183,15 +185,23 @@ class BaseLower(object):
         """
         Lower non-generator *fndesc*.
         """
+        if _use_mlir:
+            mod_ir = self.mlir_blob
+            import llvmlite.binding as llvm
+            mod = llvm.parse_bitcode(mod_ir)
+
         self.setup_function(fndesc)
 
-        # Init argument values
-        self.extract_function_arguments()
-        entry_block_tail = self.lower_function_body()
+        if _use_mlir:
+            self.library.add_llvm_module(mod);
+        else:
+            # Init argument values
+            self.extract_function_arguments()
+            entry_block_tail = self.lower_function_body()
 
-        # Close tail of entry block
-        self.builder.position_at_end(entry_block_tail)
-        self.builder.branch(self.blkmap[self.firstblk])
+            # Close tail of entry block
+            self.builder.position_at_end(entry_block_tail)
+            self.builder.branch(self.blkmap[self.firstblk])
 
     def lower_function_body(self):
         """
@@ -278,7 +288,6 @@ class Lower(BaseLower):
         from numba.core.unsafe import eh
 
         super(Lower, self).pre_block(block)
-
         if block == self.firstblk:
             # create slots for all the vars, irrespective of whether they are
             # initialized, SSA will pick this up and warn users about using

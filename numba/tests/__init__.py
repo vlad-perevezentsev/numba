@@ -33,5 +33,8 @@ def load_tests(loader, tests, pattern):
     roc_dir = join(dirname(dirname(__file__)), 'roc/tests')
     suite.addTests(loader.discover(roc_dir))
 
+    mlir_dir = join(dirname(dirname(__file__)), 'mlir/tests')
+    suite.addTests(loader.discover(mlir_dir))
+
     return suite
 

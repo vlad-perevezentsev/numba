@@ -28,11 +28,14 @@ from numba.core.typed_passes import (NopythonTypeInference, AnnotateTypes,
                                      NopythonRewrites, PreParforPass,
                                      ParforPass, DumpParforDiagnostics,
                                      IRLegalization, NoPythonBackend,
-                                     InlineOverloads, PreLowerStripPhis)
+                                     InlineOverloads, PreLowerStripPhis,
+                                     MlirBackend)
 
 from numba.core.object_mode_passes import (ObjectModeFrontEnd,
                                            ObjectModeBackEnd, CompileInterpMode)
 
+
+from numba.core.lowering import _use_mlir
 
 class Flags(utils.ConfigOptions):
     # These options are all false by default, but the defaults are
@@ -502,6 +505,9 @@ class DefaultPassBuilder(object):
         # typing
         pm.add_pass(NopythonTypeInference, "nopython frontend")
         pm.add_pass(AnnotateTypes, "annotate types")
+
+        if _use_mlir:
+            pm.add_pass(MlirBackend, "mlir backend")
 
         # strip phis
         pm.add_pass(PreLowerStripPhis, "remove phis nodes")
