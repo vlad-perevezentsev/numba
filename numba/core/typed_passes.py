@@ -20,6 +20,7 @@ from numba.core.ir_utils import (raise_on_unsupported_feature, warn_deprecated,
                                  build_definitions, compute_cfg_from_blocks)
 from numba.core import postproc
 
+from numba.core.lowering import _use_mlir
 
 @contextmanager
 def fallback_context(state, msg):
@@ -367,7 +368,9 @@ class NativeLowering(LoweringPass):
             with targetctx.push_code_library(library):
                 lower = lowering.Lower(targetctx, library, fndesc, interp,
                                        metadata=metadata)
-                setattr(lower, 'mlir_blob', state.mlir_blob)
+                if _use_mlir:
+                    setattr(lower, 'mlir_blob', state.mlir_blob)
+
                 lower.lower()
                 if not flags.no_cpython_wrapper:
                     lower.create_cpython_wrapper(flags.release_gil)

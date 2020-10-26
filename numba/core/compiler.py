@@ -35,6 +35,8 @@ from numba.core.object_mode_passes import (ObjectModeFrontEnd,
                                            ObjectModeBackEnd, CompileInterpMode)
 
 
+from numba.core.lowering import _use_mlir
+
 class Flags(utils.ConfigOptions):
     # These options are all false by default, but the defaults are
     # different with the @jit decorator (see targets.options.TargetOptions).
@@ -504,7 +506,8 @@ class DefaultPassBuilder(object):
         pm.add_pass(NopythonTypeInference, "nopython frontend")
         pm.add_pass(AnnotateTypes, "annotate types")
 
-        pm.add_pass(MlirBackend, "mlir backend")
+        if _use_mlir:
+            pm.add_pass(MlirBackend, "mlir backend")
 
         # strip phis
         pm.add_pass(PreLowerStripPhis, "remove phis nodes")
