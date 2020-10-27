@@ -1,6 +1,7 @@
 #include "pipelines/lower_to_llvm.hpp"
 
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Builders.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
@@ -9,6 +10,8 @@
 #include <mlir/Pass/Pass.h>
 
 #include <llvm/ADT/Triple.h>
+#include <llvm/ADT/TypeSwitch.h>
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -87,8 +90,177 @@ mlir::Type getExceptInfoType(LLVMTypeHelper& type_helper)
     return mlir::LLVM::LLVMStructType::getLiteral(&type_helper.get_context(), elems);
 }
 
+mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::MemRefType type)
+{
+    assert(type);
+    auto ctx = type.getContext();
+    auto i8p = mlir::LLVM::LLVMType::getInt8Ty(ctx).getPointerTo();
+    auto i64 = mlir::LLVM::LLVMType::getIntNTy(ctx, 64);
+    auto data_type = converter.convertType(type.getElementType()).cast<mlir::LLVM::LLVMType>();
+    assert(data_type);
+    auto shape_type = mlir::LLVM::LLVMArrayType::get(i64, static_cast<unsigned>(type.getRank()));
+    const mlir::LLVM::LLVMType members[] = {
+        i8p, // 0, meminfo
+        i8p, // 1, parent
+        i64, // 2, nitems
+        i64, // 3, itemsize
+        data_type.getPointerTo(), // 4, data
+        shape_type, // 5, shape
+        shape_type, // 6, strides
+    };
+    return mlir::LLVM::LLVMStructType::getLiteral(ctx, members);
+}
+
+template<typename F>
+void flatten_type(mlir::LLVM::LLVMType type, F&& func)
+{
+    if (auto struct_type = type.dyn_cast<mlir::LLVM::LLVMStructType>())
+    {
+        for (auto elem : struct_type.getBody())
+        {
+            flatten_type(elem, std::forward<F>(func));
+        }
+    }
+    else if (auto arr_type = type.dyn_cast<mlir::LLVM::LLVMArrayType>())
+    {
+        auto elem = arr_type.getElementType();
+        auto size = arr_type.getNumElements();
+        for (unsigned i = 0 ; i < size; ++i)
+        {
+            flatten_type(elem, std::forward<F>(func));
+        }
+    }
+    else
+    {
+        func(type);
+    }
+}
+
+template<typename F>
+mlir::Value unflatten(mlir::LLVM::LLVMType type, mlir::Location loc, mlir::OpBuilder& builder, F&& next_func)
+{
+    namespace mllvm = mlir::LLVM;
+    if (auto struct_type = type.dyn_cast<mlir::LLVM::LLVMStructType>())
+    {
+        mlir::Value val = builder.create<mllvm::UndefOp>(loc, struct_type);
+        for (auto elem : llvm::enumerate(struct_type.getBody()))
+        {
+            auto elem_index = builder.getI64ArrayAttr(static_cast<int64_t>(elem.index()));
+            auto elem_type = elem.value();
+            auto elem_val = unflatten(elem_type, loc, builder, std::forward<F>(next_func));
+            val = builder.create<mlir::LLVM::InsertValueOp>(loc, val, elem_val, elem_index);
+        }
+        return val;
+    }
+    else if (auto arr_type = type.dyn_cast<mlir::LLVM::LLVMArrayType>())
+    {
+        auto elem_type = arr_type.getElementType();
+        auto size = arr_type.getNumElements();
+        mlir::Value val = builder.create<mllvm::UndefOp>(loc, arr_type);
+        for (unsigned i = 0 ; i < size; ++i)
+        {
+            auto elem_index = builder.getI64ArrayAttr(static_cast<int64_t>(i));
+            auto elem_val = unflatten(elem_type, loc, builder, std::forward<F>(next_func));
+            val = builder.create<mlir::LLVM::InsertValueOp>(loc, val, elem_val, elem_index);
+        }
+        return val;
+    }
+    else
+    {
+        return next_func();
+    }
+}
+
+std::string gen_conversion_func_name(mlir::MemRefType memref_type)
+{
+    assert(memref_type);
+    std::string ret;
+    llvm::raw_string_ostream ss(ret);
+    ss << "__convert_memref_";
+    memref_type.getElementType().print(ss);
+    ss.flush();
+    return ret;
+}
+
+const constexpr llvm::StringRef linkage_attr = "numba_linkage";
+
+struct MemRefConversionCache
+{
+    mlir::FuncOp get_conversion_func(
+        mlir::ModuleOp module, mlir::OpBuilder& builder, mlir::MemRefType memref_type,
+        mlir::LLVM::LLVMStructType src_type, mlir::LLVM::LLVMStructType dst_type)
+    {
+        assert(memref_type);
+        assert(src_type);
+        assert(dst_type);
+        auto it = cache.find(memref_type);
+        if (it != cache.end())
+        {
+            auto func = it->second;
+            assert(func.getType().getNumResults() == 1);
+            assert(func.getType().getResult(0) == dst_type);
+            return func;
+        }
+        auto func_name = gen_conversion_func_name(memref_type);
+        auto func_type = mlir::FunctionType::get(src_type, dst_type, builder.getContext());
+        auto loc = builder.getUnknownLoc();
+        auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
+        new_func.setAttr(linkage_attr, mlir::StringAttr::get("internal", builder.getContext()));
+        module.push_back(new_func);
+        cache.insert({memref_type, new_func});
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        auto block = new_func.addEntryBlock();
+        builder.setInsertionPointToStart(block);
+        namespace mllvm = mlir::LLVM;
+        mlir::Value arg = block->getArgument(0);
+        auto extract = [&](unsigned index)
+        {
+            auto res_type = src_type.getBody()[index];
+            auto i = builder.getI64ArrayAttr(index);
+            return builder.create<mllvm::ExtractValueOp>(loc, res_type, arg, i);
+        };
+        auto ptr = extract(4);
+        auto shape = extract(5);
+        auto strides = extract(6);
+        auto i64 = mllvm::LLVMIntegerType::get(builder.getContext(), 64);
+        auto offset = builder.create<mllvm::ConstantOp>(loc, i64, builder.getI64IntegerAttr(0));
+        mlir::Value res = builder.create<mllvm::UndefOp>(loc, dst_type);
+        auto insert = [&](unsigned index, mlir::Value val)
+        {
+            auto i = builder.getI64ArrayAttr(index);
+            res = builder.create<mllvm::InsertValueOp>(loc, res, val, i);
+        };
+        insert(0, ptr);
+        insert(1, ptr);
+        insert(2, offset);
+        insert(3, shape);
+        insert(4, strides);
+        builder.create<mllvm::ReturnOp>(loc, res);
+        return new_func;
+    }
+private:
+    llvm::DenseMap<mlir::Type, mlir::FuncOp> cache;
+};
+
+llvm::StringRef get_linkage(mlir::Operation* op)
+{
+    assert(nullptr != op);
+    llvm::errs() << "get_linkage 1\n";
+    if (auto attr = op->getAttr(linkage_attr).dyn_cast_or_null<mlir::StringAttr>())
+    {
+        llvm::errs() << "get_linkage 2\n";
+        return attr.getValue();
+    }
+    llvm::errs() << "get_linkage 3\n";
+    return {};
+}
+
 void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
+    if (get_linkage(func) == "internal")
+    {
+        return;
+    }
     auto old_type = func.getType();
     assert(old_type.getNumResults() == 1);
     auto& ctx = *old_type.getContext();
@@ -103,15 +275,61 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
     auto add_arg = [&](mlir::Type type)
     {
         args.push_back(type);
-        func.getBody().insertArgument(index, type);
+        auto ret = func.getBody().insertArgument(index, type);
         ++index;
+        return ret;
+    };
+
+    MemRefConversionCache conversion_cache;
+
+    mlir::OpBuilder builder(&ctx);
+    builder.setInsertionPointToStart(&func.getBody().front());
+
+    auto loc = builder.getUnknownLoc();
+    llvm::SmallVector<mlir::Value, 8> new_args;
+    auto process_arg = [&](mlir::Type type)
+    {
+        if (auto memref_type = type.dyn_cast<mlir::MemRefType>())
+        {
+            new_args.clear();
+            auto arr_type = get_array_type(type_helper.get_type_converter(), memref_type);
+            flatten_type(arr_type, [&](mlir::Type new_type)
+            {
+                new_args.push_back(add_arg(new_type));
+            });
+            auto it = new_args.begin();
+            mlir::Value desc = unflatten(arr_type, loc, builder, [&]()
+            {
+                auto ret = *it;
+                ++it;
+                return ret;
+            });
+
+            auto mod = mlir::cast<mlir::ModuleOp>(func.getParentOp());
+            auto dst_type = type_helper.get_type_converter().convertType(memref_type);
+            assert(dst_type);
+            auto conv_func = conversion_cache.get_conversion_func(mod, builder, memref_type, arr_type, dst_type.cast<mlir::LLVM::LLVMStructType>());
+            auto converted = builder.create<mlir::CallOp>(loc, conv_func, desc).getResult(0);
+            auto casted = builder.create<plier::CastOp>(loc, memref_type, converted);
+            func.getBody().getArgument(index).replaceAllUsesWith(casted);
+            func.getBody().eraseArgument(index);
+        }
+        else
+        {
+            args.push_back(type);
+            ++index;
+        }
     };
 
     add_arg(ptr(old_type.getResult(0)));
     add_arg(ptr(ptr(getExceptInfoType(type_helper))));
 
     auto old_args = old_type.getInputs();
-    std::copy(old_args.begin(), old_args.end(), std::back_inserter(args));
+//    std::copy(old_args.begin(), old_args.end(), std::back_inserter(args));
+    for (auto arg : old_args)
+    {
+        process_arg(arg);
+    }
     auto ret_type = mlir::IntegerType::get(32, &ctx);
     func.setType(mlir::FunctionType::get(args, ret_type, &ctx));
 }
