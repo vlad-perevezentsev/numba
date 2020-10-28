@@ -245,13 +245,10 @@ private:
 llvm::StringRef get_linkage(mlir::Operation* op)
 {
     assert(nullptr != op);
-    llvm::errs() << "get_linkage 1\n";
     if (auto attr = op->getAttr(linkage_attr).dyn_cast_or_null<mlir::StringAttr>())
     {
-        llvm::errs() << "get_linkage 2\n";
         return attr.getValue();
     }
-    llvm::errs() << "get_linkage 3\n";
     return {};
 }
 
@@ -496,11 +493,52 @@ struct PostLLVMLowering :
     }
 };
 
+// Copypasted from mlir
+struct LLVMLoweringPass : public mlir::PassWrapper<LLVMLoweringPass, mlir::OperationPass<mlir::ModuleOp>> {
+  LLVMLoweringPass(const mlir::LowerToLLVMOptions& opts):
+    options(opts) {}
+
+  /// Run the dialect converter on the module.
+  void runOnOperation() override {
+    using namespace mlir;
+    if (options.useBarePtrCallConv && options.emitCWrappers) {
+      getOperation().emitError()
+          << "incompatible conversion options: bare-pointer calling convention "
+             "and C wrapper emission";
+      signalPassFailure();
+      return;
+    }
+    if (failed(LLVM::LLVMDialect::verifyDataLayoutString(
+            options.dataLayout.getStringRepresentation(), [this](const Twine &message) {
+              getOperation().emitError() << message.str();
+            }))) {
+      signalPassFailure();
+      return;
+    }
+
+    ModuleOp m = getOperation();
+
+    LLVMTypeConverter typeConverter(&getContext(), options);
+
+    OwningRewritePatternList patterns;
+    populateStdToLLVMConversionPatterns(typeConverter, patterns);
+
+    LLVMConversionTarget target(getContext());
+    if (failed(applyPartialConversion(m, target, patterns)))
+      signalPassFailure();
+    m.setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(),
+              StringAttr::get(options.dataLayout.getStringRepresentation(), m.getContext()));
+  }
+
+private:
+  mlir::LowerToLLVMOptions options;
+};
+
 void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addPass(std::make_unique<PreLLVMLowering>());
-    pm.addPass(mlir::createLowerToLLVMPass(getLLVMOptions()));
+    pm.addPass(std::make_unique<LLVMLoweringPass>(getLLVMOptions()));
     pm.addPass(std::make_unique<PostLLVMLowering>());
 }
 }
