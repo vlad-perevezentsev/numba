@@ -493,6 +493,27 @@ struct PostLLVMLowering :
     }
 };
 
+struct LowerCasts : public mlir::OpConversionPattern<plier::CastOp>
+{
+    using mlir::OpConversionPattern<plier::CastOp>::OpConversionPattern;
+
+    mlir::LogicalResult
+    matchAndRewrite(plier::CastOp op, llvm::ArrayRef<mlir::Value> operands,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+        assert(operands.size() == 1);
+        auto converter = getTypeConverter();
+        assert(nullptr != converter);
+        auto src_type = operands[0].getType();
+        auto dst_type = converter->convertType(op.getType());
+        if (src_type == dst_type)
+        {
+            rewriter.replaceOp(op, operands[0]);
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
+
 // Copypasted from mlir
 struct LLVMLoweringPass : public mlir::PassWrapper<LLVMLoweringPass, mlir::OperationPass<mlir::ModuleOp>> {
   LLVMLoweringPass(const mlir::LowerToLLVMOptions& opts):
@@ -522,6 +543,7 @@ struct LLVMLoweringPass : public mlir::PassWrapper<LLVMLoweringPass, mlir::Opera
 
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(typeConverter, patterns);
+    patterns.insert<LowerCasts>(typeConverter, &getContext());
 
     LLVMConversionTarget target(getContext());
     if (failed(applyPartialConversion(m, target, patterns)))
