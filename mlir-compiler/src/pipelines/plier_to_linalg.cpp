@@ -83,20 +83,19 @@ mlir::Type map_plier_type(mlir::TypeConverter& converter, mlir::Type type)
 
 llvm::StringRef extract_bound_func_name(llvm::StringRef name)
 {
+    assert(!name.empty());
     auto len = name.find(' ');
     return name.substr(0, len);
 }
 
 struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
 {
-    using check_t = mlir::LogicalResult(*)(llvm::StringRef, llvm::ArrayRef<mlir::Type>);
-    using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::StringRef, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
-    using resolver_t = std::pair<check_t, func_t>;
+    using resolver_t = llvm::function_ref<mlir::LogicalResult(plier::PyCallOp, llvm::StringRef, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&)>;
 
     CallOpLowering(mlir::TypeConverter &/*typeConverter*/,
                    mlir::MLIRContext *context,
-                   llvm::ArrayRef<resolver_t> resolvers):
-        OpRewritePattern(context), resolvers(resolvers) {}
+                   resolver_t resolver):
+        OpRewritePattern(context), resolver(resolver) {}
 
     mlir::LogicalResult matchAndRewrite(
         plier::PyCallOp op, mlir::PatternRewriter &rewriter) const override
@@ -138,31 +137,23 @@ struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
         {
             return mlir::failure();
         }
-        for (auto& c : resolvers)
-        {
-            if (mlir::succeeded(c.first(name, arg_types)))
-            {
-                return c.second(op, name, args, rewriter);
-            }
-        }
 
-        return mlir::failure();
+        return resolver(op, name, args, rewriter);
     }
 
 private:
-    llvm::ArrayRef<resolver_t> resolvers;
+    resolver_t resolver;
 };
-
-mlir::LogicalResult numpy_check(llvm::StringRef name, llvm::ArrayRef<mlir::Type> types)
-{
-    return mlir::success(name == "array.sum"); // TODO
-}
 
 mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
     assert(args.size() == 1);
+    if (name != "array.sum")
+    {
+        return mlir::failure(); // TODO
+    }
     mlir::Value inputs[] = { args[0] };
 //    auto elem_type = inputs[0].getType().cast<mlir::MemRefType>().getElementType();
     auto elem_type = mlir::IntegerType::get(64, op.getContext());
@@ -228,13 +219,9 @@ void PlierToLinalgPass::runOnOperation()
         FuncOpSignatureConversion
         >(type_converter, &getContext());
 
-    CallOpLowering::resolver_t resolvers[] = {
-        {numpy_check, numpy_rewrite}
-    };
-
     patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), resolvers);
+        >(type_converter, &getContext(), &numpy_rewrite);
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
