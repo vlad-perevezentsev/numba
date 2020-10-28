@@ -11,6 +11,7 @@
 
 #include "plier/dialect.hpp"
 
+#include "rewrites/call_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
@@ -534,14 +535,13 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
     }
 };
 
-mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& rewriter)
+mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
 {
-    auto operands = op.getOperands();
-    if (operands.size() != 2)
+    if (operands.size() != 1)
     {
         return mlir::failure();
     }
-    auto val = operands[1];
+    auto val = operands[0];
     bool success = false;
     auto replace_op = [&](mlir::Value val)
     {
@@ -559,45 +559,17 @@ mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, mlir::PatternRewriter& r
     return mlir::success(success);
 }
 
-using call_lowerer_func_t = mlir::LogicalResult(*)(plier::PyCallOp, mlir::PatternRewriter&);
-const constexpr std::pair<llvm::StringRef, call_lowerer_func_t> builtin_calls[] = {
-    {"<class 'bool'>", &lower_bool_cast},
-};
-
-struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
+mlir::LogicalResult basic_rewrite(
+    plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
+    mlir::PatternRewriter& rewriter)
 {
-    CallOpLowering(mlir::TypeConverter &/*typeConverter*/,
-                   mlir::MLIRContext *context):
-        OpRewritePattern(context) {}
-
-    mlir::LogicalResult matchAndRewrite(
-        plier::PyCallOp op, mlir::PatternRewriter &rewriter) const override
+    assert(args.size() == 1);
+    if (name == "<class 'bool'>")
     {
-        auto operands = op.getOperands();
-        if (operands.empty())
-        {
-            return mlir::failure();
-        }
-        auto func_type = operands[0].getType();
-        if (!func_type.isa<plier::PyType>())
-        {
-            return mlir::failure();
-        }
-        auto name = func_type.cast<plier::PyType>().getName();
-        if (!name.consume_front("Function(") || !name.consume_back(")"))
-        {
-            return mlir::failure();
-        }
-        for (auto& c : builtin_calls)
-        {
-            if (c.first == name)
-            {
-                return c.second(op, rewriter);
-            }
-        }
-        return mlir::failure();
+        return lower_bool_cast(op, args, rewriter);
     }
-};
+    return mlir::failure();
+}
 
 struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
 {
@@ -751,9 +723,12 @@ void PlierToStdPass::runOnOperation()
         SelectOpLowering,
         CondBrOpLowering,
         CastOpLowering,
-        BinOpLowering,
-        CallOpLowering
+        BinOpLowering
         >(type_converter, &getContext());
+
+        patterns.insert<
+        CallOpLowering
+        >(type_converter, &getContext(), &basic_rewrite);
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
