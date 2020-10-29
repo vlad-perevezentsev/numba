@@ -103,6 +103,49 @@ mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
+    if (name == "<ufunc 'add'>" && check_numpy_args(args, 2))
+    {
+        mlir::Value inputs[] = { args[0], args[1] };
+        auto elem_type = args[0].getType().cast<mlir::MemRefType>().getElementType();
+        mlir::Type res_type = mlir::RankedTensorType::get({-1}, elem_type);
+        auto loc = op.getLoc();
+        mlir::AffineMap map[] = {
+            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
+            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
+            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
+        };
+        mlir::StringRef iterators[] = { "parallel" };
+
+//        mlir::Value size = rewriter.create<mlir::DimOp>(loc, args[0], 0);
+//        mlir::Value init = rewriter.create<mlir::DynamicTensorFromElementsOp>(
+//            loc,
+//            res_type,
+//            mlir::ValueRange(size),
+//            [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+//            {
+//                assert(args.size() == 1);
+//                auto val = builder.create<mlir::ConstantOp>(loc, mlir::IntegerAttr::get(elem_type, 0));
+//                builder.create<mlir::YieldOp>(loc, val);
+//            });
+
+        auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+        {
+            assert(args.size() == 2);
+            mlir::Value res = builder.create<mlir::AddIOp>(loc, args[0], args[1]);
+            builder.create<mlir::linalg::YieldOp>(loc, res);
+        };
+        auto res = rewriter.create<mlir::linalg::GenericOp>(
+            loc,
+            mlir::TypeRange(res_type),
+            mlir::ValueRange(inputs),
+            llvm::None, // outputs
+            llvm::None, // init,
+            llvm::makeArrayRef(map),
+            llvm::makeArrayRef(iterators),
+            body).getResult(0);
+        rewriter.replaceOp(op, res);
+        return mlir::success();
+    }
     if (name == "array.sum" && check_numpy_args(args, 1))
     {
         mlir::Value inputs[] = { args[0] };
