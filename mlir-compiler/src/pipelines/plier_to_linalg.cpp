@@ -181,12 +181,13 @@ mlir::LogicalResult numpy_rewrite(
     return mlir::failure();
 }
 
-struct GetitemOpLowering : public mlir::OpRewritePattern<plier::GetItemOp>
+template<typename T>
+struct GetitemOpLowering : public mlir::OpRewritePattern<T>
 {
-    using mlir::OpRewritePattern<plier::GetItemOp>::OpRewritePattern;
+    using mlir::OpRewritePattern<T>::OpRewritePattern;
 
     mlir::LogicalResult matchAndRewrite(
-        plier::GetItemOp op, mlir::PatternRewriter &rewriter) const override
+        T op, mlir::PatternRewriter &rewriter) const override
     {
         assert(op.getNumOperands() == 2);
         auto val = op.getOperand(0);
@@ -250,7 +251,8 @@ void PlierToLinalgPass::runOnOperation()
         >(type_converter, &getContext(), &numpy_rewrite);
 
     patterns.insert<
-        GetitemOpLowering
+        GetitemOpLowering<plier::GetItemOp>,
+        GetitemOpLowering<plier::StaticGetItemOp>
         >(&getContext());
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
