@@ -286,6 +286,7 @@ private:
             {"call", &plier_lowerer::lower_call},
             {"phi", &plier_lowerer::lower_phi},
             {"build_tuple", &plier_lowerer::lower_build_tuple},
+            {"getitem", &plier_lowerer::lower_getitem},
             {"static_getitem", &plier_lowerer::lower_static_getitem},
             {"getiter", &plier_lowerer::lower_simple<plier::GetiterOp>},
             {"iternext", &plier_lowerer::lower_simple<plier::IternextOp>},
@@ -315,6 +316,13 @@ private:
         auto value = loadvar(inst.attr("value"));
         auto res_type = get_type(current_instr.attr("target"));
         return builder.create<plier::CastOp>(get_current_loc(), res_type, value);
+    }
+
+    mlir::Value lower_getitem(const py::handle& inst)
+    {
+        auto value = loadvar(inst.attr("value"));
+        auto index = loadvar(inst.attr("index"));
+        return builder.create<plier::GetItemOp>(get_current_loc(), value, index);
     }
 
     mlir::Value lower_static_getitem(const py::handle& inst)
