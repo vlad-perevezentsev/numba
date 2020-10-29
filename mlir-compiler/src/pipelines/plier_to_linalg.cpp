@@ -192,16 +192,17 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
         assert(op.getNumOperands() == 2);
         auto val = op.getOperand(0);
         auto index = op.getOperand(1);
-        if (!val.getType().isa<mlir::MemRefType>())
+        if (!val.getType().template isa<mlir::MemRefType>())
         {
             return mlir::failure();
         }
-        if (!index.getType().isa<mlir::IndexType>() && !index.getType().isa<mlir::IntegerType>())
+        if (!index.getType().template isa<mlir::IndexType>() &&
+            !index.getType().template isa<mlir::IntegerType>())
         {
             return mlir::failure();
         }
         auto loc = op.getLoc();
-        if (index.getType().isa<mlir::IntegerType>())
+        if (index.getType().template isa<mlir::IntegerType>())
         {
             index = rewriter.create<mlir::IndexCastOp>(loc, index, mlir::IndexType::get(op.getContext()));
         }
