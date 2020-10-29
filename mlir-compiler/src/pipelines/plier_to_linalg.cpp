@@ -4,6 +4,7 @@
 #include <mlir/Conversion/SCFToStandard/SCFToStandard.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include <mlir/Dialect/Linalg/IR/LinalgOps.h>
+#include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Dialect/SCF/SCF.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Linalg/Transforms/Transforms.h>
@@ -107,8 +108,10 @@ mlir::LogicalResult numpy_rewrite(
     {
         mlir::Value inputs[] = { args[0], args[1] };
         auto elem_type = args[0].getType().cast<mlir::MemRefType>().getElementType();
-        mlir::Type res_type = mlir::RankedTensorType::get({-1}, elem_type);
+        mlir::Type res_type = mlir::MemRefType::get({-1}, elem_type);
         auto loc = op.getLoc();
+        mlir::Value size = rewriter.create<mlir::DimOp>(loc, args[0], 0);
+        mlir::Value outputs[] = { rewriter.create<mlir::AllocOp>(loc, res_type, size) };
         mlir::AffineMap map[] = {
             mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
             mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
@@ -130,20 +133,18 @@ mlir::LogicalResult numpy_rewrite(
 
         auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
         {
-            assert(args.size() == 2);
+            assert(args.size() == 3);
             mlir::Value res = builder.create<mlir::AddIOp>(loc, args[0], args[1]);
             builder.create<mlir::linalg::YieldOp>(loc, res);
         };
-        auto res = rewriter.create<mlir::linalg::GenericOp>(
+        rewriter.create<mlir::linalg::GenericOp>(
             loc,
-            mlir::TypeRange(res_type),
             mlir::ValueRange(inputs),
-            llvm::None, // outputs
-            llvm::None, // init,
+            mlir::ValueRange(outputs),
             llvm::makeArrayRef(map),
             llvm::makeArrayRef(iterators),
-            body).getResult(0);
-        rewriter.replaceOp(op, res);
+            body);
+        rewriter.replaceOp(op, outputs[0]);
         return mlir::success();
     }
     if (name == "array.sum" && check_numpy_args(args, 1))
@@ -168,8 +169,8 @@ mlir::LogicalResult numpy_rewrite(
         };
         rewriter.create<mlir::linalg::GenericOp>(
             loc,
-            llvm::makeArrayRef(inputs),
-            llvm::makeArrayRef(outputs),
+            mlir::ValueRange(inputs),
+            mlir::ValueRange(outputs),
             llvm::makeArrayRef(map),
             llvm::makeArrayRef(iterators),
             body);
