@@ -181,6 +181,35 @@ mlir::LogicalResult numpy_rewrite(
     return mlir::failure();
 }
 
+struct GetitemOpLowering : public mlir::OpRewritePattern<plier::GetItemOp>
+{
+    using mlir::OpRewritePattern<plier::GetItemOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::GetItemOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        assert(op.getNumOperands() == 2);
+        auto val = op.getOperand(0);
+        auto index = op.getOperand(1);
+        if (!val.getType().isa<mlir::MemRefType>())
+        {
+            return mlir::failure();
+        }
+        if (!index.getType().isa<mlir::IndexType>() && !index.getType().isa<mlir::IntegerType>())
+        {
+            return mlir::failure();
+        }
+        auto loc = op.getLoc();
+        if (index.getType().isa<mlir::IntegerType>())
+        {
+            index = rewriter.create<mlir::IndexCastOp>(loc, index, mlir::IndexType::get(op.getContext()));
+        }
+        mlir::Value res = rewriter.create<mlir::LoadOp>(loc, val, index);
+        rewriter.replaceOp(op, res);
+        return mlir::success();
+    }
+};
+
 struct PlierToLinalgPass :
     public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
 {
@@ -219,6 +248,10 @@ void PlierToLinalgPass::runOnOperation()
     patterns.insert<
         CallOpLowering
         >(type_converter, &getContext(), &numpy_rewrite);
+
+    patterns.insert<
+        GetitemOpLowering
+        >(&getContext());
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
 }
