@@ -100,6 +100,20 @@ bool check_numpy_args(llvm::ArrayRef<mlir::Value> args, unsigned expected_count)
     return true;
 }
 
+mlir::Attribute get_zero(mlir::Type type)
+{
+    assert(type);
+    if (auto int_type = type.dyn_cast<mlir::IntegerType>())
+    {
+        return mlir::IntegerAttr::get(type, 0);
+    }
+    if (auto float_type = type.dyn_cast<mlir::FloatType>())
+    {
+        return mlir::FloatAttr::get(type, 0.0);
+    }
+    llvm_unreachable("get_zero: usupported type");
+}
+
 mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
@@ -155,6 +169,8 @@ mlir::LogicalResult numpy_rewrite(
         auto res_type = mlir::MemRefType::get({}, elem_type);
         auto loc = op.getLoc();
         mlir::Value outputs[] = { rewriter.create<mlir::AllocaOp>(loc, res_type) };
+        auto zero = rewriter.create<mlir::ConstantOp>(loc, get_zero(elem_type));
+        rewriter.create<mlir::StoreOp>(loc, zero, outputs[0]);
         mlir::AffineMap map[] = {
             mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
             mlir::AffineMap::get(1, 0, op.getContext()),

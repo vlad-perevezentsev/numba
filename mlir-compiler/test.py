@@ -57,6 +57,18 @@ def range_loop(n):
         res = res + i
     return res
 
+def np_getitem(a, b):
+    return a[b]
+
+def np_getitem2(a, b, c):
+    return b[c]
+
+def np_sum(a):
+    return a.sum()
+
+def np_add(a, b):
+    return np.add(a, b).sum()
+
 def test(func, params):
     global _tests_total
     global _tests_passes
@@ -94,6 +106,10 @@ test(tuple, (1,2.0,3))
 test(arr_loop, ())
 test(range_loop, (8,))
 test(sum2, (np.asarray([1,2,3]),np.asarray([4,5,6])))
+test(np_getitem, (np.asarray([1,2,3]),1))
+test(np_getitem2, (np.asarray([1,2,3]),np.asarray([4,5,6]),1))
+test(np_sum, (np.asarray([1,2,3]),))
+test(np_add, (np.asarray([1,2,3]),np.asarray([4,5,6])))
 
 print(f'Tests passed: {_tests_passes}/{_tests_total}')
 if (len(_failed_tests) != 0):
