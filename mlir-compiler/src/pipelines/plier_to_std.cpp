@@ -563,7 +563,6 @@ mlir::LogicalResult basic_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
-    assert(args.size() == 1);
     if (name == "<class 'bool'>")
     {
         return lower_bool_cast(op, args, rewriter);

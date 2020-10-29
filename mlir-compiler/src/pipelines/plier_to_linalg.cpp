@@ -86,7 +86,6 @@ mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
-    assert(args.size() == 1);
     if (name != "array.sum")
     {
         return mlir::failure(); // TODO
