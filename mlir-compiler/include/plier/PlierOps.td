@@ -100,6 +100,19 @@ def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
 ];
 }
 
+def GetItemOp : Plier_Op<"getitem", []> {
+    let arguments = (ins
+                     AnyType:$value,
+                     AnyType:$index);
+
+    let results = (outs AnyType);
+
+    let builders = [
+     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, "
+               "::mlir::Value index">
+];
+}
+
 def StaticGetItemOp : Plier_Op<"static_getitem", []> {
     let arguments = (ins
                      AnyType:$value,

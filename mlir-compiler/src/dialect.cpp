@@ -159,6 +159,13 @@ void BuildTupleOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 //    return mlir::failure();
 //}
 
+void GetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                            ::mlir::Value value, ::mlir::Value index)
+{
+    GetItemOp::build(builder, state,
+                     PyType::getUndefined(state.getContext()), value, index);
+}
+
 void StaticGetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value, ::mlir::Value index_var,
                             unsigned int index)

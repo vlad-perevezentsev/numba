@@ -7,6 +7,23 @@ import unittest
 
 class TestMlirBasic(TestCase):
 
+    def test_staticgetitem(self):
+        def py_func(a):
+            return a[1]
+
+        jit_func = njit(py_func)
+        arr = np.asarray([5,6,7])
+        assert_equal(py_func(arr), jit_func(arr))
+
+    def test_getitem(self):
+        def py_func(a, b):
+            return a[b]
+
+        jit_func = njit(py_func)
+        arr = np.asarray([5,6,7])
+        for i in range(3):
+            assert_equal(py_func(arr, i), jit_func(arr, i))
+
     def test_sum(self):
         def py_func(a):
             return a.sum()
@@ -14,6 +31,15 @@ class TestMlirBasic(TestCase):
         jit_func = njit(py_func)
         arr = np.asarray([1,2,3])
         assert_equal(py_func(arr), jit_func(arr))
+
+    def test_sum_add(self):
+        def py_func(a, b):
+            return np.add(a, b).sum()
+
+        jit_func = njit(py_func)
+        arr1 = np.asarray([1,2,3])
+        arr2 = np.asarray([4,5,6])
+        assert_equal(py_func(arr1, arr2), jit_func(arr1, arr2))
 
 if __name__ == '__main__':
     unittest.main()
