@@ -10,6 +10,7 @@
 #include <numpy/arrayscalars.h>
 
 #include "../../_arraystruct.h"
+#include "../../_numba_common.h"
 #include "nrt.h"
 
 
@@ -324,7 +325,13 @@ NRT_adapt_ndarray_to_python(arystruct_t* arystruct, PyTypeObject *retty, int ndi
     npy_intp *shape, *strides;
     int flags = 0;
 
-    if (!PyArray_DescrCheck(descr)) {
+    if (descr == NULL) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "In 'NRT_adapt_ndarray_to_python', 'descr' is NULL");
+        return NULL;
+    }
+
+    if (!NUMBA_PyArray_DescrCheck(descr)) {
         PyErr_Format(PyExc_TypeError,
                      "expected dtype object, got '%.200s'",
                      Py_TYPE(descr)->tp_name);

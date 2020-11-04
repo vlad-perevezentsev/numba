@@ -1,8 +1,5 @@
-dppl_present = False
-
 try:
-    from dpctl.ocldrv import *
+    import dpctl
+    dppl_present = dpctl.has_sycl_platforms() and dpctl.has_gpu_queues()
 except:
-    pass
-else:
-    dppl_present = True
+    dppl_present = False
