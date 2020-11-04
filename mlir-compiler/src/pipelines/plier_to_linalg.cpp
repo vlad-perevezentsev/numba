@@ -5,9 +5,9 @@
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include <mlir/Dialect/Linalg/IR/LinalgOps.h>
 #include <mlir/Dialect/Linalg/Passes.h>
+#include <mlir/Dialect/Linalg/Transforms/Transforms.h>
 #include <mlir/Dialect/SCF/SCF.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
-#include <mlir/Dialect/Linalg/Transforms/Transforms.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -17,6 +17,7 @@
 
 #include "pipelines/plier_to_std.hpp"
 #include "rewrites/call_lowering.hpp"
+#include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
@@ -67,6 +68,7 @@ mlir::Type map_array_type(mlir::MLIRContext& ctx, mlir::TypeConverter& conveter,
         {
             llvm::SmallVector<int64_t, 8> shape(num_dims, -1);
             return mlir::MemRefType::get(shape, type);
+//            return mlir::RankedTensorType::get(shape, type);
         }
     }
     return nullptr;
@@ -260,7 +262,8 @@ void PlierToLinalgPass::runOnOperation()
 
     mlir::OwningRewritePatternList patterns;
     patterns.insert<
-        FuncOpSignatureConversion
+        FuncOpSignatureConversion,
+        CastOpLowering
         >(type_converter, &getContext());
 
     patterns.insert<
@@ -304,6 +307,7 @@ void LowerLinalgPass::runOnOperation()
 void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
+    pm.addPass(mlir::createBufferPlacementPass());
     pm.addPass(std::make_unique<LowerLinalgPass>());
     pm.addPass(mlir::createLowerToCFGPass());
 }
