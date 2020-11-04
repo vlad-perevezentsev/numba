@@ -12,6 +12,7 @@
 #include "plier/dialect.hpp"
 
 #include "rewrites/call_lowering.hpp"
+#include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
@@ -569,46 +570,6 @@ mlir::LogicalResult basic_rewrite(
     }
     return mlir::failure();
 }
-
-struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
-{
-    using cast_t = std::function<mlir::Value(mlir::Type, mlir::Value, mlir::PatternRewriter&)>;
-
-    CastOpLowering(mlir::TypeConverter &typeConverter,
-                   mlir::MLIRContext *context,
-                   cast_t cast_func = nullptr):
-        OpRewritePattern(context), converter(typeConverter),
-        cast_func(std::move(cast_func)) {}
-
-    mlir::LogicalResult matchAndRewrite(
-        plier::CastOp op, mlir::PatternRewriter &rewriter) const override
-    {
-        auto src = op.getOperand();
-        auto src_type = src.getType();
-        auto dst_type = converter.convertType(op.getType());
-        if (dst_type)
-        {
-            if (src_type == dst_type)
-            {
-                rewriter.replaceOp(op, src);
-                return mlir::success();
-            }
-            if (nullptr != cast_func)
-            {
-                if (auto new_op = cast_func(dst_type, src, rewriter))
-                {
-                    rewriter.replaceOp(op, new_op);
-                    return mlir::success();
-                }
-            }
-        }
-        return mlir::failure();
-    }
-
-private:
-    mlir::TypeConverter& converter;
-    cast_t cast_func;
-};
 
 mlir::Operation* change_op_ret_type(mlir::Operation* op,
                                     mlir::PatternRewriter& rewriter,
