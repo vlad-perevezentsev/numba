@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "plier/dialect.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -11,7 +13,7 @@ class TypeConverter;
 
 struct CallOpLowering : public mlir::OpRewritePattern<plier::PyCallOp>
 {
-    using resolver_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::StringRef, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
+    using resolver_t = std::function<mlir::LogicalResult(plier::PyCallOp, llvm::StringRef, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&)>;
 
     CallOpLowering(mlir::TypeConverter &typeConverter,
                    mlir::MLIRContext *context,
