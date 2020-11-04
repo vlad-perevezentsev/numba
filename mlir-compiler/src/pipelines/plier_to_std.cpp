@@ -445,7 +445,7 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
         }
     }
 
-    llvm_unreachable("Unhandled cast");
+    return nullptr;
 }
 
 struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
@@ -572,31 +572,42 @@ mlir::LogicalResult basic_rewrite(
 
 struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
 {
+    using cast_t = std::function<mlir::Value(mlir::Type, mlir::Value, mlir::PatternRewriter&)>;
+
     CastOpLowering(mlir::TypeConverter &typeConverter,
-                     mlir::MLIRContext *context):
-        OpRewritePattern(context), converter(typeConverter) {}
+                   mlir::MLIRContext *context,
+                   cast_t cast_func = nullptr):
+        OpRewritePattern(context), converter(typeConverter),
+        cast_func(std::move(cast_func)) {}
 
     mlir::LogicalResult matchAndRewrite(
         plier::CastOp op, mlir::PatternRewriter &rewriter) const override
     {
-        auto src_type = op.getOperand().getType();
+        auto src = op.getOperand();
+        auto src_type = src.getType();
         auto dst_type = converter.convertType(op.getType());
-        if (dst_type && is_supported_type(src_type) && is_supported_type(dst_type))
+        if (dst_type)
         {
             if (src_type == dst_type)
             {
-                rewriter.replaceOp(op, op.getOperand());
+                rewriter.replaceOp(op, src);
                 return mlir::success();
             }
-            auto new_op = do_cast(dst_type, op.getOperand(), rewriter);
-            rewriter.replaceOp(op, new_op);
-            return mlir::success();
+            if (nullptr != cast_func)
+            {
+                if (auto new_op = cast_func(dst_type, src, rewriter))
+                {
+                    rewriter.replaceOp(op, new_op);
+                    return mlir::success();
+                }
+            }
         }
         return mlir::failure();
     }
 
 private:
     mlir::TypeConverter& converter;
+    cast_t cast_func;
 };
 
 mlir::Operation* change_op_ret_type(mlir::Operation* op,
@@ -721,9 +732,12 @@ void PlierToStdPass::runOnOperation()
         ConstOpLowering,
         SelectOpLowering,
         CondBrOpLowering,
-        CastOpLowering,
         BinOpLowering
         >(type_converter, &getContext());
+
+        patterns.insert<
+        CastOpLowering
+        >(type_converter, &getContext(), &do_cast);
 
         patterns.insert<
         CallOpLowering
