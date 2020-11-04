@@ -232,8 +232,17 @@ class ndarray(np.ndarray):
         else:
             return NotImplemented
 
+def isdef(x):
+    try:
+        eval(x)
+        return True
+    except NameEror:
+        return False
+
 for c in class_list:
     cname = c[0]
+    if isdef(cname):
+        continue
     # For now we do the simple thing and copy the types from NumPy module into dparray module.
     new_func = "%s = np.%s" % (cname, cname)
 #    new_func =  "class %s(np.%s):\n" % (cname, cname)
@@ -261,6 +270,8 @@ for c in class_list:
 # instead.  This is a stop-gap.  We should eventually find a
 # way to do the allocation correct to start with.
 for fname in functions_list:
+    if isdef(fname):
+        continue
 #    print("Adding function", fname)
     new_func =  "def %s(*args, **kwargs):\n" % fname
     new_func += "    ret = np.%s(*args, **kwargs)\n" % fname
