@@ -332,7 +332,6 @@ void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
     pm.addPass(std::make_unique<LowerLinalgPass>());
-    pm.addPass(mlir::createLowerToCFGPass());
 }
 }
 

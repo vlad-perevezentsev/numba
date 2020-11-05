@@ -4,6 +4,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
+#include <mlir/Conversion/SCFToStandard/SCFToStandard.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Pass/PassManager.h>
@@ -550,6 +551,7 @@ private:
 
 void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
+    pm.addPass(mlir::createLowerToCFGPass());
     pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addNestedPass<mlir::FuncOp>(std::make_unique<PreLLVMLowering>());
     pm.addPass(std::make_unique<LLVMLoweringPass>(getLLVMOptions()));
