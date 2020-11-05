@@ -6,6 +6,7 @@
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/Passes.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -704,7 +705,7 @@ void PlierToStdPass::runOnOperation()
         CallOpLowering
         >(type_converter, &getContext(), &basic_rewrite);
 
-    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)

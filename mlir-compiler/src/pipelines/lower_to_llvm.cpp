@@ -8,6 +8,7 @@
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Pass/Pass.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include <llvm/ADT/Triple.h>
 #include <llvm/ADT/TypeSwitch.h>
@@ -454,18 +455,13 @@ struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::Functio
         LLVMTypeHelper type_helper(getContext());
 
         mlir::OwningRewritePatternList patterns;
-        auto apply_conv = [&]()
-        {
-            (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-        };
-
         auto func = getFunction();
         fix_func_sig(type_helper, func);
 
         patterns.insert<ReturnOpLowering>(&getContext(),
                                           type_helper.get_type_converter());
 
-        apply_conv();
+        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
     }
 };
 
@@ -481,15 +477,11 @@ struct PostLLVMLowering :
     void runOnFunction() override final
     {
         mlir::OwningRewritePatternList patterns;
-        auto apply_conv = [&]()
-        {
-            (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
-        };
 
         // Remove redundant bitcasts we have created on PreLowering
         patterns.insert<RemoveBitcasts>(&getContext());
 
-        apply_conv();
+        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
     }
 };
 
@@ -546,7 +538,7 @@ struct LLVMLoweringPass : public mlir::PassWrapper<LLVMLoweringPass, mlir::Opera
     patterns.insert<LowerCasts>(typeConverter, &getContext());
 
     LLVMConversionTarget target(getContext());
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
     m.setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(),
               StringAttr::get(options.dataLayout.getStringRepresentation(), m.getContext()));
@@ -559,9 +551,9 @@ private:
 void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<CheckForPlierTypes>());
-    pm.addPass(std::make_unique<PreLLVMLowering>());
+    pm.addNestedPass<mlir::FuncOp>(std::make_unique<PreLLVMLowering>());
     pm.addPass(std::make_unique<LLVMLoweringPass>(getLLVMOptions()));
-    pm.addPass(std::make_unique<PostLLVMLowering>());
+    pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(std::make_unique<PostLLVMLowering>());
 }
 }
 

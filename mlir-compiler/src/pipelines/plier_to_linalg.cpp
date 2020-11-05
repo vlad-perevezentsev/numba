@@ -12,6 +12,7 @@
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/Passes.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "plier/dialect.hpp"
 
@@ -275,7 +276,7 @@ void PlierToLinalgPass::runOnOperation()
         GetitemOpLowering<plier::StaticGetItemOp>
         >(&getContext());
 
-    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 struct LowerLinalgPass :
@@ -301,13 +302,13 @@ void LowerLinalgPass::runOnOperation()
         (&getContext(), mlir::linalg::LinalgLoweringType::ParallelLoops);
 
 
-    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
-    pm.addPass(mlir::createBufferPlacementPass());
+//    pm.addPass(mlir::createBufferPlacementPass());
     pm.addPass(std::make_unique<LowerLinalgPass>());
     pm.addPass(mlir::createLowerToCFGPass());
 }

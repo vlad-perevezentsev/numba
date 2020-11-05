@@ -41,15 +41,15 @@ std::string serialize_mod(const llvm::Module& mod)
     return ret;
 }
 
-template<typename T>
-std::string to_str(T& obj)
-{
-    std::string ret;
-    llvm::raw_string_ostream stream(ret);
-    obj.print(stream);
-    stream.flush();
-    return ret;
-}
+//template<typename T>
+//std::string to_str(T& obj)
+//{
+//    std::string ret;
+//    llvm::raw_string_ostream stream(ret);
+//    obj.print(stream);
+//    stream.flush();
+//    return ret;
+//}
 
 std::vector<std::pair<int, py::handle>> get_blocks(const py::object& func)
 {
@@ -610,8 +610,8 @@ void create_pipeline(PipelineRegistry& registry)
 
 py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
 {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<plier::PlierDialect>();
+//    mlir::registerDialect<mlir::StandardOpsDialect>();
+//    mlir::registerDialect<plier::PlierDialect>();
     mlir::MLIRContext context;
     auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
     PipelineRegistry registry;
