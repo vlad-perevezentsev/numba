@@ -214,7 +214,10 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
         assert(op.getNumOperands() == 2);
         auto val = op.getOperand(0);
         auto index = op.getOperand(1);
-        if (!val.getType().template isa<mlir::MemRefType>())
+        auto type = val.getType();
+        bool is_memref = type.template isa<mlir::MemRefType>();
+        bool is_tensor = type.template isa<mlir::TensorType>();
+        if (!is_memref && !is_tensor)
         {
             return mlir::failure();
         }
@@ -228,7 +231,19 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
         {
             index = rewriter.create<mlir::IndexCastOp>(loc, index, mlir::IndexType::get(op.getContext()));
         }
-        mlir::Value res = rewriter.create<mlir::LoadOp>(loc, val, index);
+        mlir::Value res;
+        if (is_memref)
+        {
+            res = rewriter.create<mlir::LoadOp>(loc, val, index);
+        }
+        else if (is_tensor)
+        {
+            res = rewriter.create<mlir::ExtractElementOp>(loc, val, index);
+        }
+        else
+        {
+            llvm_unreachable("Invalid getitem");
+        }
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
@@ -313,9 +328,9 @@ void LowerLinalgPass::runOnOperation()
 void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
-    pm.addPass(mlir::createLinalgBufferizePass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
+    pm.addPass(mlir::createLinalgBufferizePass());
     pm.addPass(std::make_unique<LowerLinalgPass>());
     pm.addPass(mlir::createLowerToCFGPass());
 }
