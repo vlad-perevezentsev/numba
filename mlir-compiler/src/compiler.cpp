@@ -19,9 +19,9 @@ public:
     CompilerContextImpl(mlir::MLIRContext& ctx,
                         const CompilerContext::Settings& settings,
                         const PipelineRegistry& registry):
-        pm(&ctx, settings.verify)
+        pm(&ctx)
     {
-        registry.populate_pass_manager(pm);
+        pm.enableVerifier(settings.verify);
 
         if (settings.pass_statistics)
         {
@@ -36,6 +36,8 @@ public:
             ctx.enableMultithreading(false);
             pm.enableIRPrinting();
         }
+
+        registry.populate_pass_manager(pm);
     }
 
     void run(mlir::ModuleOp& module)

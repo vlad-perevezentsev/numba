@@ -6,12 +6,14 @@
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/Passes.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 
 #include "plier/dialect.hpp"
 
 #include "rewrites/call_lowering.hpp"
+#include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
@@ -445,7 +447,7 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
         }
     }
 
-    llvm_unreachable("Unhandled cast");
+    return nullptr;
 }
 
 struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
@@ -570,35 +572,6 @@ mlir::LogicalResult basic_rewrite(
     return mlir::failure();
 }
 
-struct CastOpLowering : public mlir::OpRewritePattern<plier::CastOp>
-{
-    CastOpLowering(mlir::TypeConverter &typeConverter,
-                     mlir::MLIRContext *context):
-        OpRewritePattern(context), converter(typeConverter) {}
-
-    mlir::LogicalResult matchAndRewrite(
-        plier::CastOp op, mlir::PatternRewriter &rewriter) const override
-    {
-        auto src_type = op.getOperand().getType();
-        auto dst_type = converter.convertType(op.getType());
-        if (dst_type && is_supported_type(src_type) && is_supported_type(dst_type))
-        {
-            if (src_type == dst_type)
-            {
-                rewriter.replaceOp(op, op.getOperand());
-                return mlir::success();
-            }
-            auto new_op = do_cast(dst_type, op.getOperand(), rewriter);
-            rewriter.replaceOp(op, new_op);
-            return mlir::success();
-        }
-        return mlir::failure();
-    }
-
-private:
-    mlir::TypeConverter& converter;
-};
-
 mlir::Operation* change_op_ret_type(mlir::Operation* op,
                                     mlir::PatternRewriter& rewriter,
                                     llvm::ArrayRef<mlir::Type> types)
@@ -721,15 +694,18 @@ void PlierToStdPass::runOnOperation()
         ConstOpLowering,
         SelectOpLowering,
         CondBrOpLowering,
-        CastOpLowering,
         BinOpLowering
         >(type_converter, &getContext());
+
+        patterns.insert<
+        CastOpLowering
+        >(type_converter, &getContext(), &do_cast);
 
         patterns.insert<
         CallOpLowering
         >(type_converter, &getContext(), &basic_rewrite);
 
-    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)

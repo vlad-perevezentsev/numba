@@ -2,10 +2,13 @@
 
 #include <mlir/Transforms/DialectConversion.h>
 
+#include "plier/dialect.hpp"
+
 namespace
 {
 mlir::LogicalResult setBlockSig(
-    mlir::Block& block, const mlir::TypeConverter::SignatureConversion& conversion)
+    mlir::Block& block, mlir::OpBuilder& builder,
+    const mlir::TypeConverter::SignatureConversion& conversion)
 {
     if (conversion.getConvertedTypes().size() != block.getNumArguments())
     {
@@ -15,7 +18,16 @@ mlir::LogicalResult setBlockSig(
     {
         auto arg = std::get<0>(it);
         auto type = std::get<1>(it);
-        arg.setType(type);
+        if (arg.getType() != type)
+        {
+            builder.setInsertionPointToStart(&block);
+            auto res = builder.create<plier::CastOp>(builder.getUnknownLoc(), arg.getType(), arg);
+            arg.replaceUsesWithIf(res, [&](mlir::OpOperand& op)
+                                  {
+                                      return op.getOwner() != res;
+                                  });
+            arg.setType(type);
+        }
     }
     return mlir::success();
 }
@@ -23,18 +35,22 @@ mlir::LogicalResult setBlockSig(
 mlir::LogicalResult convertRegionTypes(
     mlir::Region *region, mlir::TypeConverter &converter, bool apply)
 {
+    assert(nullptr != region);
     if (region->empty())
     {
         return mlir::failure();
     }
+
+    mlir::OpBuilder builder(region->getContext());
 
     // Convert the arguments of each block within the region.
     auto sig = converter.convertBlockSignature(&region->front());
     assert(static_cast<bool>(sig));
     if (apply)
     {
-        auto res = setBlockSig(region->front(), *sig);
+        auto res = setBlockSig(region->front(), builder, *sig);
         assert(mlir::succeeded(res));
+        (void)res;
     }
     for (auto &block : llvm::make_early_inc_range(llvm::drop_begin(*region, 1)))
     {
@@ -45,7 +61,7 @@ mlir::LogicalResult convertRegionTypes(
         }
         if (apply)
         {
-            if (mlir::failed(setBlockSig(block, *sig)))
+            if (mlir::failed(setBlockSig(block, builder, *sig)))
             {
                 return mlir::failure();
             }
