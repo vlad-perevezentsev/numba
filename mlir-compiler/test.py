@@ -53,8 +53,18 @@ def arr_loop():
 
 def range_loop(n):
     res = 0
+    res1 = 2
     for i in range(n):
         res = res + i
+        res1 = res1 + i * 2
+    return res + res1
+
+def range_loop_nested(a, b, c):
+    res = 0
+    for i in range(a):
+        for j in range(b):
+            for k in range(c):
+                res = res + i + j * 10 + k * 100
     return res
 
 def np_getitem(a, b):
@@ -109,6 +119,7 @@ test(tuple, (1,2,3))
 test(tuple, (1,2.0,3))
 test(arr_loop, ())
 test(range_loop, (8,))
+test(range_loop_nested, (8,9,10))
 test(sum2, (np.asarray([1,2,3]),np.asarray([4,5,6])))
 test(np_getitem, (np.asarray([1,2,3]),1))
 test(np_getitem2, (np.asarray([1,2,3]),np.asarray([4,5,6]),1))
