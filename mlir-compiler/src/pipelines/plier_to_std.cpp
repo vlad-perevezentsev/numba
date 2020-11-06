@@ -9,6 +9,7 @@
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/Passes.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <mlir/Transforms/RegionUtils.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -215,6 +216,11 @@ bool is_float(mlir::Type type)
     return type.isa<mlir::FloatType>();
 }
 
+bool is_index(mlir::Type type)
+{
+    return type.isa<mlir::IndexType>();
+}
+
 struct ConstOpLowering : public mlir::OpRewritePattern<plier::ConstOp>
 {
     ConstOpLowering(mlir::TypeConverter &/*typeConverter*/,
@@ -418,6 +424,11 @@ mlir::Value float_int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRe
     return rewriter.create<T>(val.getLoc(), val, dst_type);
 }
 
+mlir::Value index_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+{
+    return rewriter.create<mlir::IndexCastOp>(val.getLoc(), val, dst_type);
+}
+
 mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
 {
     auto src_type = val.getType();
@@ -439,6 +450,8 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
         {&is_int, &is_int, &int_cast<true>},
         {&is_int, &is_float, &int_float_cast<true>},
         {&is_float, &is_int, &float_int_cast<true>},
+        {&is_index, &is_int, &index_cast},
+        {&is_int, &is_index, &index_cast},
     };
 
     for (auto& h : handlers)
@@ -555,7 +568,9 @@ Op get_next_op(llvm::iterator_range<mlir::Block::iterator>& iters)
     return res;
 }
 
-mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& builder, llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>()> get_bounds)
+mlir::LogicalResult lower_loop(
+    plier::GetiterOp getiter, mlir::PatternRewriter& builder,
+    llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds)
 {
     auto getiter_block = getiter.getOperation()->getBlock();
     auto get_next_block = [](mlir::Block* block)->mlir::Block*
@@ -572,6 +587,7 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
     {
         return mlir::failure();
     }
+
     auto iters = llvm::iterator_range<mlir::Block::iterator>(*iternext_block);
     auto iternext = get_next_op<plier::IternextOp>(iters);
     auto pairfirst = get_next_op<plier::PairfirstOp>(iters);
@@ -580,12 +596,13 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
     auto cond_br = get_next_op<mlir::CondBranchOp>(iters);
     auto skip_casts = [](mlir::Value op)
     {
-        while (auto cast = op.dyn_cast_or_null<plier::CastOp>())
+        while (auto cast = mlir::dyn_cast_or_null<plier::CastOp>(op.getDefiningOp()))
         {
             op = cast.getOperand();
         }
         return op;
     };
+
     if (!iternext || !pairfirst || !pairsecond || !cond_br ||
         skip_casts(cond_br.condition()) != pairsecond)
     {
@@ -600,6 +617,7 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
         return mlir::failure();
     }
 
+
     auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Value iv, mlir::ValueRange iterargs)
     {
         mlir::BlockAndValueMapping mapper;
@@ -610,10 +628,10 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
         }
         auto index = builder.create<plier::CastOp>(loc, pairfirst.getType(), iv);
         mapper.map(pairfirst, index);
+
         for (auto& op : body_block->without_terminator())
         {
-            auto new_op = builder.clone(op, mapper);
-            mapper.map(op, new_op);
+            builder.clone(op, mapper);
         }
 
         auto term_operands = mlir::cast<mlir::BranchOp>(body_block->getTerminator()).destOperands();
@@ -632,23 +650,24 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
     {
         if (!val.getType().isa<mlir::IndexType>())
         {
-            return builder.create<mlir::IndexCastOp>(loc, val);
+            return builder.create<mlir::IndexCastOp>(loc, val, mlir::IndexType::get(val.getContext()));
         }
         return val;
     };
 
-    auto bounds = get_bounds();
-    std::get<0>(bounds) = index_cast(std::get<0>(bounds));
-    std::get<1>(bounds) = index_cast(std::get<1>(bounds));
-    std::get<2>(bounds) = index_cast(std::get<2>(bounds));
+    auto term = mlir::cast<mlir::BranchOp>(getiter_block->getTerminator());
+    auto bounds = get_bounds(builder, loc);
+    auto lower_bound = index_cast(std::get<0>(bounds));
+    auto upper_bound = index_cast(std::get<1>(bounds));
+    auto step = index_cast(std::get<2>(bounds));
     mlir::OpBuilder::InsertionGuard g(builder);
-    builder.setInsertionPoint(getiter);
+    builder.setInsertionPointAfter(getiter);
     auto loop_op = builder.create<mlir::scf::ForOp>(
         loc,
-        std::get<0>(bounds), // lower bound
-        std::get<1>(bounds), // upper bound
-        std::get<2>(bounds), // step
-        llvm::None, // iterArgs
+        lower_bound,
+        upper_bound,
+        step,
+        term.destOperands(), // iterArgs
         body
         );
     assert(loop_op.getNumResults() == iternext_block->getNumArguments());
@@ -656,11 +675,9 @@ mlir::LogicalResult lower_loop(plier::GetiterOp getiter, mlir::PatternRewriter& 
     {
         std::get<0>(arg).replaceAllUsesWith(std::get<1>(arg));
     }
-    builder.eraseBlock(body_block);
-    builder.eraseBlock(iternext_block);
-    builder.eraseOp(getiter);
-    auto term = mlir::cast<mlir::BranchOp>(getiter_block->getTerminator());
-    term.setSuccessor(post_block);
+
+    builder.create<mlir::BranchOp>(loc, post_block);
+    builder.eraseOp(term);
     return mlir::success();
 }
 
@@ -671,7 +688,28 @@ mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> 
     {
         return mlir::failure();
     }
-    return mlir::failure();
+    mlir::Value val(op);
+    if (!val.getUsers().empty())
+    {
+        auto user = mlir::dyn_cast<plier::GetiterOp>(*val.getUsers().begin());
+        auto get_bounds = [&](mlir::OpBuilder& builder, mlir::Location loc)
+        {
+            auto lower_bound = (operands.size() >= 2 ? operands[0] : builder.create<mlir::ConstantIndexOp>(loc, 0));
+            auto upper_bound = (operands.size() >= 2 ? operands[1] : operands[0]);
+            auto step = (operands.size() == 3 ? operands[2] : builder.create<mlir::ConstantIndexOp>(loc, 1));
+            return std::make_tuple(lower_bound, upper_bound, step);
+        };
+        if (!user || mlir::failed(lower_loop(user,rewriter, get_bounds)))
+        {
+            return mlir::failure();
+        }
+    }
+
+    if (val.getUsers().empty())
+    {
+        rewriter.eraseOp(op);
+    }
+    return mlir::success();
 }
 
 mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
@@ -705,7 +743,7 @@ mlir::LogicalResult basic_rewrite(
     using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
     std::pair<llvm::StringRef, func_t> handlers[] = {
         {"<class 'bool'>", lower_bool_cast},
-        {"range", lower_range},
+        {"<class 'range'>", lower_range},
     };
     for (auto& handler : handlers)
     {
@@ -831,6 +869,8 @@ void PlierToStdPass::runOnOperation()
     type_converter.addConversion([](mlir::Type type) { return type; });
     populate_std_type_converter(type_converter);
 
+    auto context = &getContext();
+
     mlir::OwningRewritePatternList patterns;
 
     patterns.insert<
@@ -840,15 +880,20 @@ void PlierToStdPass::runOnOperation()
         SelectOpLowering,
         CondBrOpLowering,
         BinOpLowering
-        >(type_converter, &getContext());
+        >(type_converter, context);
 
         patterns.insert<
         CastOpLowering
-        >(type_converter, &getContext(), &do_cast);
+        >(type_converter, context, &do_cast);
 
         patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), &basic_rewrite);
+        >(type_converter, context, &basic_rewrite);
+
+    for (auto *op : context->getRegisteredOperations())
+    {
+        op->getCanonicalizationPatterns(patterns, context);
+    }
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }

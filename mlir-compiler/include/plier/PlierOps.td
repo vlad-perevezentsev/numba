@@ -127,7 +127,7 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
 ];
 }
 
-def GetiterOp : Plier_Op<"getiter", []> {
+def GetiterOp : Plier_Op<"getiter", [NoSideEffect]> {
     let arguments = (ins
                      AnyType:$value);
 
