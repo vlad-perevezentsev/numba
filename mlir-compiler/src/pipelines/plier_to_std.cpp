@@ -1184,58 +1184,6 @@ mlir::Operation* change_op_ret_type(mlir::Operation* op,
     return rewriter.createOperation(state);
 }
 
-struct ExpandTuples : public mlir::RewritePattern
-{
-    ExpandTuples(mlir::MLIRContext* ctx):
-        RewritePattern(0, mlir::Pattern::MatchAnyOpTypeTag()),
-        dialect(ctx->getLoadedDialect<plier::PlierDialect>())
-    {
-        assert(nullptr != dialect);
-    }
-
-    mlir::LogicalResult
-    matchAndRewrite(mlir::Operation* op, mlir::PatternRewriter& rewriter) const override
-    {
-        if (op->getResultTypes().size() != 1 ||
-            !op->getResultTypes()[0].isa<mlir::TupleType>() ||
-            (op->getDialect() != dialect))
-        {
-            return mlir::failure();
-        }
-        auto types = op->getResultTypes()[0].cast<mlir::TupleType>().getTypes();
-
-        auto new_op = change_op_ret_type(op, rewriter, types);
-        auto new_op_results = new_op->getResults();
-
-        llvm::SmallVector<mlir::Operation*, 8> users(op->getUsers());
-        llvm::SmallVector<mlir::Value, 8> new_operands;
-        for (auto user_op : users)
-        {
-            new_operands.clear();
-            for (auto arg : user_op->getOperands())
-            {
-                if (arg.getDefiningOp() == op)
-                {
-                    std::copy(new_op_results.begin(), new_op_results.end(), std::back_inserter(new_operands));
-                }
-                else
-                {
-                    new_operands.push_back(arg);
-                }
-            }
-            rewriter.updateRootInPlace(user_op, [&]()
-            {
-                user_op->setOperands(new_operands);
-            });
-        }
-        rewriter.eraseOp(op);
-        return mlir::success();
-    }
-
-private:
-    mlir::Dialect* dialect = nullptr;
-};
-
 struct PlierToStdPass :
     public mlir::PassWrapper<PlierToStdPass, mlir::OperationPass<mlir::ModuleOp>>
 {
@@ -1248,25 +1196,6 @@ struct PlierToStdPass :
 
     void runOnOperation() override;
 };
-
-bool check_for_plier_types(mlir::Type type)
-{
-    if (type.isa<plier::PyType>())
-    {
-        return true;
-    }
-    if (auto ftype = type.dyn_cast<mlir::FunctionType>())
-    {
-        return llvm::any_of(ftype.getResults(), &check_for_plier_types) ||
-               llvm::any_of(ftype.getInputs(), &check_for_plier_types);
-    }
-    return false;
-}
-
-bool check_op_for_plier_types(mlir::Value val)
-{
-    return check_for_plier_types(val.getType());
-}
 
 template<typename T>
 mlir::Value cast_materializer(
