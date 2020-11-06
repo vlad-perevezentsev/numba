@@ -335,6 +335,12 @@ void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
 
+    pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(1024));
+    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferHoistingPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferDeallocationPass());
+
     pm.addPass(std::make_unique<LowerLinalgPass>());
 }
 }
