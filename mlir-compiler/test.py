@@ -69,6 +69,10 @@ def np_sum(a):
 def np_add(a, b):
     return np.add(a, b).sum()
 
+def np_add2(a, b, c):
+    t = np.add(a, b)
+    return np.add(t, c).sum()
+
 def test(func, params):
     global _tests_total
     global _tests_passes
@@ -110,6 +114,7 @@ test(np_getitem, (np.asarray([1,2,3]),1))
 test(np_getitem2, (np.asarray([1,2,3]),np.asarray([4,5,6]),1))
 test(np_sum, (np.asarray([1,2,3]),))
 test(np_add, (np.asarray([1,2,3]),np.asarray([4,5,6])))
+test(np_add2, (np.asarray([1,2,3]),np.asarray([4,5,6]),np.asarray([7,8,9])))
 
 print(f'Tests passed: {_tests_passes}/{_tests_total}')
 if (len(_failed_tests) != 0):
