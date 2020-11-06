@@ -9,7 +9,6 @@
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/Passes.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-#include <mlir/Transforms/RegionUtils.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -681,8 +680,9 @@ mlir::LogicalResult lower_loop(
     builder.eraseOp(term);
 
     iternext_block->dropAllDefinedValueUses();
-    iternext_block->erase();
     body_block->dropAllDefinedValueUses();
+
+    iternext_block->erase();
     body_block->erase();
     builder.eraseOp(getiter);
 
