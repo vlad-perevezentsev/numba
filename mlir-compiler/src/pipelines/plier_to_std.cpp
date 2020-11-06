@@ -617,7 +617,6 @@ mlir::LogicalResult lower_loop(
         return mlir::failure();
     }
 
-
     auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Value iv, mlir::ValueRange iterargs)
     {
         mlir::BlockAndValueMapping mapper;
@@ -660,7 +659,7 @@ mlir::LogicalResult lower_loop(
     auto lower_bound = index_cast(std::get<0>(bounds));
     auto upper_bound = index_cast(std::get<1>(bounds));
     auto step = index_cast(std::get<2>(bounds));
-    mlir::OpBuilder::InsertionGuard g(builder);
+
     builder.setInsertionPointAfter(getiter);
     auto loop_op = builder.create<mlir::scf::ForOp>(
         loc,
@@ -676,8 +675,17 @@ mlir::LogicalResult lower_loop(
         std::get<0>(arg).replaceAllUsesWith(std::get<1>(arg));
     }
 
-    builder.create<mlir::BranchOp>(loc, post_block);
+    auto iternext_term = mlir::cast<mlir::CondBranchOp>(iternext_block->getTerminator());
+
+    builder.create<mlir::BranchOp>(loc, post_block, iternext_term.falseDestOperands());
     builder.eraseOp(term);
+
+    iternext_block->dropAllDefinedValueUses();
+    iternext_block->erase();
+    body_block->dropAllDefinedValueUses();
+    body_block->erase();
+    builder.eraseOp(getiter);
+
     return mlir::success();
 }
 
