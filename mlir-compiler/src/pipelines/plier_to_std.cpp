@@ -973,9 +973,10 @@ Op get_next_op(llvm::iterator_range<mlir::Block::iterator>& iters)
     return res;
 }
 
-mlir::LogicalResult lower_loop(
+mlir::LogicalResult lower_while_to_for(
     plier::GetiterOp getiter, mlir::PatternRewriter& builder,
-    llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds)
+    llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds,
+    llvm::function_ref<mlir::Value(mlir::OpBuilder&, mlir::Location, mlir::Type, mlir::Value)> get_iter_val)
 {
     llvm::SmallVector<mlir::scf::WhileOp, 4> to_process;
     for (auto user : getiter.getOperation()->getUsers())
@@ -1025,8 +1026,8 @@ mlir::LogicalResult lower_loop(
                 auto term_arg = std::get<1>(it);
                 if (term_arg == pairfirst) // iter arg
                 {
-                    auto index = builder.create<plier::CastOp>(loc, pairfirst.getType(), iv);
-                    mapper.map(block_arg, index);
+                    auto iter_val = get_iter_val(builder, loc, pairfirst.getType(), iv);
+                    mapper.map(block_arg, iter_val);
                 }
                 else
                 {
@@ -1118,7 +1119,11 @@ mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> 
             auto step = (operands.size() == 3 ? operands[2] : builder.create<mlir::ConstantIndexOp>(loc, 1));
             return std::make_tuple(lower_bound, upper_bound, step);
         };
-        if (!user || mlir::failed(lower_loop(user,rewriter, get_bounds)))
+        auto get_index = [](mlir::OpBuilder& builder, mlir::Location loc, mlir::Type dst_type, mlir::Value index)
+        {
+            return builder.create<plier::CastOp>(loc, dst_type, index);
+        };
+        if (!user || mlir::failed(lower_while_to_for(user,rewriter, get_bounds, get_index)))
         {
             return mlir::failure();
         }
