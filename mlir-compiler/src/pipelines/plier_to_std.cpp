@@ -574,6 +574,24 @@ void erase_blocks(llvm::ArrayRef<mlir::Block*> blocks)
     }
 }
 
+bool is_blocks_different(llvm::ArrayRef<mlir::Block*> blocks)
+{
+    for (auto it : llvm::enumerate(blocks))
+    {
+        auto block1 = it.value();
+        assert(nullptr != block1);
+        for (auto block2 : blocks.drop_front(it.index() + 1))
+        {
+            assert(nullptr != block2);
+            if (block1 == block2)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
 {
     ScfIfRewrite(mlir::TypeConverter &/*typeConverter*/,
@@ -592,6 +610,12 @@ struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
         auto false_block = op.getFalseDest();
         if (false_block != post_block &&
             get_next_block(false_block) != post_block)
+        {
+            return mlir::failure();
+        }
+
+        auto start_block = op.getOperation()->getBlock();
+        if (!is_blocks_different({start_block, true_block, post_block}))
         {
             return mlir::failure();
         }
