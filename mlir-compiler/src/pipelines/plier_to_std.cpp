@@ -176,6 +176,7 @@ mlir::Type map_plier_type_name(mlir::MLIRContext& ctx, llvm::StringRef& name)
 
 mlir::Type map_plier_type(mlir::Type type)
 {
+    assert(type);
     if (!type.isa<plier::PyType>())
     {
         return type;
@@ -186,6 +187,7 @@ mlir::Type map_plier_type(mlir::Type type)
 
 bool is_supported_type(mlir::Type type)
 {
+    assert(type);
     return type.isIntOrFloat();
 }
 
@@ -207,16 +209,19 @@ void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::
 
 bool is_int(mlir::Type type)
 {
+    assert(type);
     return type.isa<mlir::IntegerType>();
 }
 
 bool is_float(mlir::Type type)
 {
+    assert(type);
     return type.isa<mlir::FloatType>();
 }
 
 bool is_index(mlir::Type type)
 {
+    assert(type);
     return type.isa<mlir::IndexType>();
 }
 
@@ -361,6 +366,7 @@ mlir::Type coerce(mlir::Type type0, mlir::Type type1)
     assert(type0 != type1);
     auto get_bits_count = [](mlir::Type type)->unsigned
     {
+        assert(type);
         if (type.isa<mlir::IntegerType>())
         {
             return type.cast<mlir::IntegerType>().getWidth();
@@ -430,6 +436,7 @@ mlir::Value index_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewrit
 
 mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
 {
+    assert(dst_type);
     auto src_type = val.getType();
     if (src_type == dst_type)
     {
@@ -708,6 +715,248 @@ struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
     }
 };
 
+mlir::scf::WhileOp create_while(
+    mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange iterArgs,
+    llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)> beforeBuilder,
+    llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)> afterBuilder)
+{
+    mlir::OperationState state(loc, mlir::scf::WhileOp::getOperationName());
+    state.addOperands(iterArgs);
+
+    {
+        mlir::OpBuilder::InsertionGuard g(builder);
+        auto add_region = [&](mlir::ValueRange args)->mlir::Block*
+        {
+            auto reg = state.addRegion();
+            auto block = builder.createBlock(reg);
+            for (auto arg : args)
+            {
+                block->addArgument(arg.getType());
+            }
+            return block;
+        };
+
+        auto beforeBlock = add_region(iterArgs);
+        beforeBuilder(builder, state.location, beforeBlock->getArguments());
+        auto cond = mlir::cast<mlir::scf::ConditionOp>(beforeBlock->getTerminator());
+        state.addTypes(cond.args().getTypes());
+
+        auto afterblock = add_region(cond.args());
+        afterBuilder(builder, state.location, afterblock->getArguments());
+    }
+    return mlir::cast<mlir::scf::WhileOp>(builder.createOperation(state));
+}
+
+bool is_inside_block(mlir::Operation* op, mlir::Block* block)
+{
+    assert(nullptr != op);
+    assert(nullptr != block);
+    do
+    {
+        if (op->getBlock() == block)
+        {
+            return true;
+        }
+    }
+    while((op = op->getParentOp()));
+    return false;
+}
+
+struct ScfWhileRewrite : public mlir::OpRewritePattern<mlir::BranchOp>
+{
+    ScfWhileRewrite(mlir::TypeConverter &/*typeConverter*/,
+                 mlir::MLIRContext *context):
+        OpRewritePattern(context) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::BranchOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto before_block = op.dest();
+        auto before_term = mlir::dyn_cast<mlir::CondBranchOp>(before_block->getTerminator());
+        if (!before_term)
+        {
+            return mlir::failure();
+        }
+        auto start_block = op.getOperation()->getBlock();
+        auto after_block = before_term.trueDest();
+        auto post_block = before_term.falseDest();
+        if (get_next_block(after_block) != before_block ||
+            !is_blocks_different({start_block, before_block, after_block, post_block}))
+        {
+            return mlir::failure();
+        }
+
+        auto check_outside_vals = [&](mlir::Operation* op)->mlir::WalkResult
+        {
+            for (auto user : op->getUsers())
+            {
+                if (!is_inside_block(user, before_block) &&
+                    !is_inside_block(user, after_block))
+                {
+                    return mlir::WalkResult::interrupt();
+                }
+            }
+            return mlir::WalkResult::advance();
+        };
+
+        if (after_block->walk(check_outside_vals).wasInterrupted())
+        {
+            return mlir::failure();
+        }
+
+        mlir::BlockAndValueMapping mapper;
+        llvm::SmallVector<mlir::Value, 8> yield_vars;
+        auto before_block_args = before_block->getArguments();
+        llvm::SmallVector<mlir::Value, 8> orig_vars(before_block_args.begin(), before_block_args.end());
+
+        auto before_body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange iterargs)
+        {
+            mapper.map(before_block_args, iterargs);
+            yield_vars.resize(before_block_args.size());
+            for (auto& op : before_block->without_terminator())
+            {
+                auto new_op = builder.clone(op, mapper);
+                for (auto user : op.getUsers())
+                {
+                    user->isBeforeInBlock(user);
+                    if (!is_inside_block(user, before_block))
+                    {
+                        for (auto it : llvm::zip(op.getResults(), new_op->getResults()))
+                        {
+                            orig_vars.emplace_back(std::get<0>(it));
+                            yield_vars.emplace_back(std::get<1>(it));
+                        }
+                        break;
+                    }
+                }
+            }
+
+            llvm::transform(before_block->getArguments(), yield_vars.begin(),
+                [&](mlir::Value val) { return mapper.lookupOrDefault(val); });
+
+            auto term = mlir::cast<mlir::CondBranchOp>(before_block->getTerminator());
+            for (auto arg : term.falseDestOperands())
+            {
+                orig_vars.emplace_back(arg);
+                yield_vars.emplace_back(mapper.lookupOrDefault(arg));
+            }
+            auto cond = mapper.lookupOrDefault(term.condition());
+            builder.create<mlir::scf::ConditionOp>(loc, cond, yield_vars);
+        };
+        auto after_body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange iterargs)
+        {
+            mapper.clear();
+            assert(orig_vars.size() == iterargs.size());
+            mapper.map(orig_vars, iterargs);
+            for (auto& op : after_block->without_terminator())
+            {
+                builder.clone(op, mapper);
+            }
+            yield_vars.clear();
+            auto term = mlir::cast<mlir::BranchOp>(after_block->getTerminator());
+            for (auto arg : term.getOperands())
+            {
+                yield_vars.emplace_back(mapper.lookupOrDefault(arg));
+            }
+            builder.create<mlir::scf::YieldOp>(loc, yield_vars);
+        };
+
+        auto while_op = create_while(
+            rewriter,
+            op.getLoc(),
+            op.getOperands(),
+            before_body,
+            after_body);
+
+        assert(orig_vars.size() == while_op.getNumResults());
+        for (auto arg : llvm::zip(orig_vars, while_op.getResults()))
+        {
+            std::get<0>(arg).replaceAllUsesWith(std::get<1>(arg));
+        }
+
+        rewriter.create<mlir::BranchOp>(op.getLoc(), post_block, before_term.falseDestOperands());
+        rewriter.eraseOp(op);
+        erase_blocks({before_block, after_block});
+
+        return mlir::success();
+    }
+};
+
+struct FixupWhileTypes : public mlir::OpRewritePattern<mlir::scf::WhileOp>
+{
+    FixupWhileTypes(mlir::TypeConverter &/*typeConverter*/,
+                    mlir::MLIRContext *context):
+        OpRewritePattern(context) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::scf::WhileOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        bool changed = false;
+        mlir::OpBuilder::InsertionGuard g(rewriter);
+        auto before_block = &op.before().front();
+        rewriter.startRootUpdate(op);
+        rewriter.setInsertionPointToStart(before_block);
+        assert(before_block->getNumArguments() == op.getNumOperands());
+        auto loc = rewriter.getUnknownLoc();
+        for (auto it : llvm::zip(op.getOperandTypes(), before_block->getArguments()))
+        {
+            auto new_type = std::get<0>(it);
+            auto arg = std::get<1>(it);
+            auto old_type = arg.getType();
+            if (old_type != new_type)
+            {
+                rewriter.create<plier::CastOp>(loc, old_type, arg);
+                arg.setType(new_type);
+                changed = true;
+            }
+        }
+
+        auto term = mlir::cast<mlir::scf::ConditionOp>(before_block->getTerminator());
+        auto after_types = term.args().getTypes();
+
+        auto after_block = &op.after().front();
+        rewriter.setInsertionPointToStart(after_block);
+        assert(after_block->getNumArguments() == term.args().size());
+        for (auto it : llvm::zip(after_types, after_block->getArguments()))
+        {
+            auto new_type = std::get<0>(it);
+            auto arg = std::get<1>(it);
+            auto old_type = arg.getType();
+            if (old_type != new_type)
+            {
+                rewriter.create<plier::CastOp>(loc, old_type, arg);
+                arg.setType(new_type);
+                changed = true;
+            }
+        }
+
+        rewriter.setInsertionPointAfter(op);
+        assert(op.getNumResults() == term.args().size());
+        for (auto it : llvm::zip(after_types, op.getResults()))
+        {
+            auto new_type = std::get<0>(it);
+            auto arg = std::get<1>(it);
+            auto old_type = arg.getType();
+            if (old_type != new_type)
+            {
+                rewriter.create<plier::CastOp>(loc, old_type, arg);
+                arg.setType(new_type);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            rewriter.finalizeRootUpdate(op);
+        }
+        else
+        {
+            rewriter.cancelRootUpdate(op);
+        }
+        return mlir::success(changed);
+    }
+};
+
 template<typename Op>
 Op get_next_op(llvm::iterator_range<mlir::Block::iterator>& iters)
 {
@@ -900,7 +1149,7 @@ mlir::LogicalResult basic_rewrite(
     using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
     std::pair<llvm::StringRef, func_t> handlers[] = {
         {"<class 'bool'>", lower_bool_cast},
-        {"<class 'range'>", lower_range},
+//        {"<class 'range'>", lower_range},
     };
     for (auto& handler : handlers)
     {
@@ -1037,7 +1286,9 @@ void PlierToStdPass::runOnOperation()
         SelectOpLowering,
         CondBrOpLowering,
         BinOpLowering,
-        ScfIfRewrite
+        ScfIfRewrite,
+        ScfWhileRewrite,
+        FixupWhileTypes
         >(type_converter, context);
 
         patterns.insert<
