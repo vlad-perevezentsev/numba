@@ -328,9 +328,13 @@ void LowerLinalgPass::runOnOperation()
 void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
+
+    pm.addPass(mlir::createLinalgFusionOfTensorOpsPass());
+
     pm.addPass(mlir::createLinalgBufferizePass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
+
     pm.addPass(std::make_unique<LowerLinalgPass>());
 }
 }
