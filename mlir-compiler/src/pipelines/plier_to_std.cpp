@@ -551,6 +551,139 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
     }
 };
 
+mlir::Block* get_next_block(mlir::Block* block)
+{
+    assert(nullptr != block);
+    if (auto br = mlir::dyn_cast_or_null<mlir::BranchOp>(block->getTerminator()))
+    {
+        return br.dest();
+    }
+    return nullptr;
+};
+
+void erase_blocks(llvm::ArrayRef<mlir::Block*> blocks)
+{
+    for (auto block : blocks)
+    {
+        assert(nullptr != block);
+        block->dropAllDefinedValueUses();
+    }
+    for (auto block : blocks)
+    {
+        block->erase();
+    }
+}
+
+struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
+{
+    ScfIfRewrite(mlir::TypeConverter &/*typeConverter*/,
+                 mlir::MLIRContext *context):
+        OpRewritePattern(context) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::CondBranchOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto true_block = op.getTrueDest();
+        auto post_block = get_next_block(true_block);
+        if (nullptr == post_block)
+        {
+            return mlir::failure();
+        }
+        auto false_block = op.getFalseDest();
+        if (false_block != post_block &&
+            get_next_block(false_block) != post_block)
+        {
+            return mlir::failure();
+        }
+        auto cond = op.condition();
+
+        mlir::BlockAndValueMapping mapper;
+        llvm::SmallVector<mlir::Value, 8> yield_vals;
+        auto copy_block = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Block& block)
+        {
+            mapper.clear();
+            for (auto& op : block.without_terminator())
+            {
+                builder.clone(op, mapper);
+            }
+            auto term = mlir::cast<mlir::BranchOp>(block.getTerminator());
+            yield_vals.clear();
+            yield_vals.reserve(term.getNumOperands());
+            for (auto op : term.getOperands())
+            {
+                yield_vals.emplace_back(mapper.lookupOrDefault(op));
+            }
+            builder.create<mlir::scf::YieldOp>(loc, yield_vals);
+        };
+
+        auto true_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+        {
+            copy_block(builder, loc, *true_block);
+        };
+
+        bool has_else = false_block != post_block;
+        auto res_types = mlir::cast<mlir::BranchOp>(true_block->getTerminator()).getOperandTypes();
+        mlir::scf::IfOp if_op;
+        if (has_else)
+        {
+            auto false_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+            {
+                copy_block(builder, loc, *false_block);
+            };
+            if_op = rewriter.create<mlir::scf::IfOp>(
+                op.getLoc(),
+                res_types,
+                cond,
+                true_body,
+                false_body);
+        }
+        else
+        {
+            if (res_types.empty())
+            {
+                if_op = rewriter.create<mlir::scf::IfOp>(
+                    op.getLoc(),
+                    res_types,
+                    cond,
+                    true_body);
+            }
+            else
+            {
+                auto false_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+                {
+                    auto res = op.getFalseOperands();
+                    yield_vals.clear();
+                    yield_vals.reserve(res.size());
+                    for (auto op : res)
+                    {
+                        yield_vals.emplace_back(mapper.lookupOrDefault(op));
+                    }
+                    builder.create<mlir::scf::YieldOp>(loc, yield_vals);
+                };
+                if_op = rewriter.create<mlir::scf::IfOp>(
+                    op.getLoc(),
+                    res_types,
+                    cond,
+                    true_body,
+                    false_body);
+            }
+        }
+
+        rewriter.create<mlir::BranchOp>(op.getLoc(), post_block, if_op.getResults());
+        rewriter.eraseOp(op);
+
+        if (true_block->getUsers().empty())
+        {
+            erase_blocks(true_block);
+        }
+        if (false_block->getUsers().empty())
+        {
+            erase_blocks(false_block);
+        }
+        return mlir::success();
+    }
+};
+
 template<typename Op>
 Op get_next_op(llvm::iterator_range<mlir::Block::iterator>& iters)
 {
@@ -572,15 +705,7 @@ mlir::LogicalResult lower_loop(
     llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds)
 {
     auto getiter_block = getiter.getOperation()->getBlock();
-    auto get_next_block = [](mlir::Block* block)->mlir::Block*
-    {
-        assert(nullptr != block);
-        if (auto br = mlir::dyn_cast_or_null<mlir::BranchOp>(block->getTerminator()))
-        {
-            return br.dest();
-        }
-        return nullptr;
-    };
+
     auto iternext_block = get_next_block(getiter_block);
     if (nullptr == iternext_block)
     {
@@ -887,7 +1012,8 @@ void PlierToStdPass::runOnOperation()
         ConstOpLowering,
         SelectOpLowering,
         CondBrOpLowering,
-        BinOpLowering
+        BinOpLowering,
+        ScfIfRewrite
         >(type_converter, context);
 
         patterns.insert<
