@@ -55,8 +55,10 @@ def range_loop(n):
     res = 0
     res1 = 2
     for i in range(n):
-        res = res + i
-        res1 = res1 + i * 2
+        if i > 5:
+            res = res + i
+        else:
+            res1 = res1 + i * 2
     return res + res1
 
 def range_loop_nested(a, b, c):
