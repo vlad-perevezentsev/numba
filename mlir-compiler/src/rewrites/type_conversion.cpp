@@ -1,6 +1,7 @@
 #include "rewrites/type_conversion.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Dialect/StandardOps/IR/Ops.h>
 
 #include "plier/dialect.hpp"
 
@@ -14,6 +15,7 @@ mlir::LogicalResult setBlockSig(
     {
         return mlir::failure();
     }
+    unsigned i = 0;
     for (auto it : llvm::zip(block.getArguments(), conversion.getConvertedTypes()))
     {
         auto arg = std::get<0>(it);
@@ -26,8 +28,41 @@ mlir::LogicalResult setBlockSig(
                                   {
                                       return op.getOwner() != res;
                                   });
+
+            for (auto& use : block.getUses())
+            {
+                auto op = use.getOwner();
+                builder.setInsertionPoint(op);
+                if (auto br = mlir::dyn_cast<mlir::BranchOp>(op))
+                {
+                    assert(&block == br.dest());
+                    auto src = br.destOperands()[i];
+                    auto new_op = builder.create<plier::CastOp>(op->getLoc(), type, src);
+                    br.destOperandsMutable().slice(i, 1).assign(new_op);
+                }
+                else if (auto cond_br = mlir::dyn_cast<mlir::CondBranchOp>(op))
+                {
+                    if (&block == cond_br.trueDest())
+                    {
+                        auto src = cond_br.trueDestOperands()[i];
+                        auto new_op = builder.create<plier::CastOp>(op->getLoc(), type, src);
+                        cond_br.trueDestOperandsMutable().slice(i, 1).assign(new_op);
+                    }
+                    if (&block == cond_br.falseDest())
+                    {
+                        auto src = cond_br.falseDestOperands()[i];
+                        auto new_op = builder.create<plier::CastOp>(op->getLoc(), type, src);
+                        cond_br.falseDestOperandsMutable().slice(i, 1).assign(new_op);
+                    }
+                }
+                else
+                {
+                    llvm_unreachable("setBlockSig: unknown operation type");
+                }
+            }
             arg.setType(type);
         }
+        ++i;
     }
     return mlir::success();
 }
