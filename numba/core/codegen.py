@@ -77,32 +77,6 @@ class _CFG(object):
     def __repr__(self):
         return self.dot
 
-def test_link():
-    ll.initialize()
-    ll.initialize_all_targets()
-    ll.initialize_native_asmprinter()
-
-    target = ll.Target.from_triple(ll.get_process_triple())
-    tm = target.create_target_machine()
-
-
-    llvm_module = ll.parse_assembly("""
-        declare i32 @PyArg_UnpackTuple(i8*, i8*, i64, i64, ...)
-        declare double @sin(double)
-        define i64 @foo() {
-            ret i64 ptrtoint (i32 (i8*, i8*, i64, i64, ...)* @PyArg_UnpackTuple to i64)
-        }
-        """)
-
-    engine = ll.create_mcjit_compiler(llvm_module, tm)
-    addr = engine.get_function_address('PyArg_UnpackTuple')
-    print('PyArg_UnpackTuple', addr)  # printing 0x0
-
-
-    addr = engine.get_function_address('foo')
-    foo = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)
-    print('foo', addr)
-    print("PyArg_UnpackTuple", foo())  # print non zero
 
 class CodeLibrary(object):
     """
@@ -235,14 +209,10 @@ class CodeLibrary(object):
         self.add_llvm_module(ll_module)
 
     def add_llvm_module(self, ll_module):
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("CodeLibrary::add_llvm_module", self._name)
         self._optimize_functions(ll_module)
         # TODO: we shouldn't need to recreate the LLVM module object
         ll_module = remove_redundant_nrt_refct(ll_module)
         self._final_module.link_in(ll_module)
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("CodeLibrary::add_llvm_module end", self._name)
 
     def finalize(self):
         """
@@ -250,8 +220,6 @@ class CodeLibrary(object):
         Finalization involves various stages of code optimization and
         linking.
         """
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("CodeLibrary::finalize", self._name)
         #require_global_compiler_lock()
 
         # Report any LLVM-related problems to the user
@@ -263,8 +231,6 @@ class CodeLibrary(object):
             dump("FUNCTION OPTIMIZED DUMP %s" % self._name,
                  self.get_llvm_str(), 'llvm')
 
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("Before link_in")
         # Link libraries for shared code
         seen = set()
         for library in self._linking_libraries:
@@ -280,10 +246,8 @@ class CodeLibrary(object):
 
         self._final_module.verify()
         self._finalize_final_module()
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("CodeLibrary::finalize end", self._name)
 
-    def _finalize_dynamic_globals(self):
+    def _finalize_dyanmic_globals(self):
         # Scan for dynamic globals
         for gv in self._final_module.global_variables:
             if gv.name.startswith('numba.dynamic.globals'):
@@ -301,7 +265,7 @@ class CodeLibrary(object):
         """
         Make the underlying LLVM module ready to use.
         """
-        self._finalize_dynamic_globals()
+        self._finalize_dyanmic_globals()
         self._verify_declare_only_symbols()
 
         # Remember this on the module, for the object cache hooks
@@ -321,7 +285,6 @@ class CodeLibrary(object):
             dump("OPTIMIZED DUMP %s" % self._name, self.get_llvm_str(), 'llvm')
 
         if config.DUMP_ASSEMBLY:
-            test_link()
             # CUDA backend cannot return assembly this early, so don't
             # attempt to dump assembly if nothing is produced.
             asm = self.get_asm_str()
@@ -571,8 +534,6 @@ class RuntimeLinker(object):
         prefix = self.PREFIX
 
         for gv in module.global_variables:
-            if config.DEBUG_ARRAY_OPT >= 1:
-                print("scan_unresolved_symbols", gv)
             if gv.name.startswith(prefix):
                 sym = gv.name[len(prefix):]
                 # Avoid remapping to existing GV
@@ -589,8 +550,6 @@ class RuntimeLinker(object):
         Scan and track all defined symbols.
         """
         for fn in module.functions:
-            if config.DEBUG_ARRAY_OPT >= 1:
-                print("scan_defined_symbols", fn)
             if not fn.is_declaration:
                 self._defined.add(fn.name)
 
@@ -598,14 +557,10 @@ class RuntimeLinker(object):
         """
         Fix unresolved symbols if they are defined.
         """
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("RuntimeLinker resolve", self._unresolved, self._defined)
         # An iterator to get all unresolved but available symbols
         pending = [name for name in self._unresolved if name in self._defined]
         # Resolve pending symbols
         for name in pending:
-            if config.DEBUG_ARRAY_OPT >= 1:
-                print("name", name)
             # Get runtime address
             fnptr = engine.get_function_address(name)
             # Fix all usage
@@ -650,8 +605,6 @@ class JitEngine(object):
         """Extract symbols from the module
         """
         for gsets in (mod.functions, mod.global_variables):
-            if config.DEBUG_ARRAY_OPT >= 1:
-                print("_load_defined_symbols", gsets, self._defined_symbols)
             self._defined_symbols |= {gv.name for gv in gsets
                                       if not gv.is_declaration}
 
@@ -659,8 +612,6 @@ class JitEngine(object):
         """Override ExecutionEngine.add_module
         to keep info about defined symbols.
         """
-        if config.DEBUG_ARRAY_OPT >= 1:
-            print("add_module", module)
         self._load_defined_symbols(module)
         return self._ee.add_module(module)
 
@@ -923,7 +874,6 @@ def initialize_llvm():
     ll.initialize()
     ll.initialize_native_target()
     ll.initialize_native_asmprinter()
-    ll.initialize_all_targets()
 
 
 def get_host_cpu_features():
