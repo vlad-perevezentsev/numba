@@ -3,6 +3,7 @@
 #include <mlir/IR/BlockAndValueMapping.h>
 #include <mlir/IR/Dialect.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+#include <mlir/Dialect/StandardOps/Transforms/Passes.h>
 #include <mlir/Dialect/SCF/SCF.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
@@ -190,22 +191,6 @@ bool is_supported_type(mlir::Type type)
 {
     assert(type);
     return type.isIntOrFloat();
-}
-
-template<typename T>
-void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
-{
-    assert(nullptr != op);
-    rewriter.replaceOpWithNewOp<T>(op, new_type, operands);
-}
-
-template<typename T, uint64_t Pred>
-void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/, mlir::ValueRange operands)
-{
-    assert(nullptr != op);
-    auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(64, op->getContext()), Pred);
-    mlir::Type new_type = mlir::IntegerType::get(1, op->getContext());
-    rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, operands[0], operands[1]);
 }
 
 bool is_int(mlir::Type type)
@@ -472,11 +457,36 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
     return nullptr;
 }
 
+template<typename T>
+void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
+{
+    assert(nullptr != op);
+    rewriter.replaceOpWithNewOp<T>(op, new_type, operands);
+}
+
+void replace_itruediv_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
+{
+    assert(nullptr != op);
+    auto lhs = do_cast(new_type, operands[0], rewriter);
+    auto rhs = do_cast(new_type, operands[1], rewriter);
+    rewriter.replaceOpWithNewOp<mlir::DivFOp>(op, lhs, rhs);
+}
+
+template<typename T, uint64_t Pred>
+void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/, mlir::ValueRange operands)
+{
+    assert(nullptr != op);
+    auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(64, op->getContext()), Pred);
+    mlir::Type new_type = mlir::IntegerType::get(1, op->getContext());
+    rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, operands[0], operands[1]);
+}
+
+
 struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
 {
-    BinOpLowering(mlir::TypeConverter &/*typeConverter*/,
+    BinOpLowering(mlir::TypeConverter &typeConverter,
                   mlir::MLIRContext *context):
-        OpRewritePattern(context) {}
+        OpRewritePattern(context), converter(typeConverter) {}
 
     mlir::LogicalResult matchAndRewrite(
         plier::BinOp op, mlir::PatternRewriter &rewriter) const override
@@ -486,6 +496,11 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         auto type0 = operands[0].getType();
         auto type1 = operands[1].getType();
         if (!is_supported_type(type0) || !is_supported_type(type1))
+        {
+            return mlir::failure();
+        }
+        auto res_type = converter.convertType(op.getType());
+        if (!res_type || !is_supported_type(res_type))
         {
             return mlir::failure();
         }
@@ -517,6 +532,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {"+", &replace_op<mlir::AddIOp>, &replace_op<mlir::AddFOp>},
             {"-", &replace_op<mlir::SubIOp>, &replace_op<mlir::SubFOp>},
             {"*", &replace_op<mlir::MulIOp>, &replace_op<mlir::MulFOp>},
+            {"/", &replace_itruediv_op, &replace_op<mlir::DivFOp>},
 
             {">", &replace_cmp_op<mlir::CmpIOp, static_cast<uint64_t>(mlir::CmpIPredicate::sgt)>,
                   &replace_cmp_op<mlir::CmpFOp, static_cast<uint64_t>(mlir::CmpFPredicate::OGT)>},
@@ -539,7 +555,7 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
             {
                 if (h.type == op.op())
                 {
-                    (h.*mem)(op, rewriter, final_type, converted_operands);
+                    (h.*mem)(op, rewriter, res_type, converted_operands);
                     return mlir::success();
                 }
             }
@@ -557,6 +573,8 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
         }
         return mlir::failure();
     }
+private:
+    mlir::TypeConverter& converter;
 };
 
 mlir::Value negate(mlir::Value val, mlir::Location loc, mlir::PatternRewriter &rewriter)
@@ -1146,6 +1164,8 @@ void PlierToStdPass::runOnOperation()
         patterns.insert<
         CallOpLowering
         >(type_converter, context, &basic_rewrite);
+
+    mlir::populateStdExpandDivsRewritePatterns(context, patterns);
 
     for (auto *op : context->getRegisteredOperations())
     {

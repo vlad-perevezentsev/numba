@@ -118,6 +118,8 @@ struct inst_handles
         {"-",  "sub"}, // binary
         {"-",  "neg"}, // unary
         {"*",  "mul"},
+        {"/",  "truediv"},
+        {"//", "floordiv"},
 
         {">",  "gt"},
         {">=", "ge"},
