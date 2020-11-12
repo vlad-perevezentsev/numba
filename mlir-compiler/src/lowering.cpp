@@ -493,6 +493,10 @@ private:
         {
             return builder.getI64IntegerAttr(val.cast<int64_t>());
         }
+        if (py::isinstance<py::float_>(val))
+        {
+            return builder.getF64FloatAttr(val.cast<double>());
+        }
         report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
