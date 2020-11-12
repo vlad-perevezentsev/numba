@@ -78,6 +78,7 @@ struct inst_handles
         Return = mod.attr("Return");
         Branch = mod.attr("Branch");
         Jump = mod.attr("Jump");
+        SetItem = mod.attr("SetItem");
 
         Arg = mod.attr("Arg");
         Expr = mod.attr("Expr");
@@ -99,6 +100,7 @@ struct inst_handles
     py::handle Return;
     py::handle Branch;
     py::handle Jump;
+    py::handle SetItem;
 
     py::handle Arg;
     py::handle Expr;
@@ -225,6 +227,10 @@ private:
             auto target = inst.attr("target");
             auto val = lower_assign(inst, target);
             storevar(val, target);
+        }
+        else if (py::isinstance(inst, insts.SetItem))
+        {
+            setitem(inst.attr("target"), inst.attr("index"), inst.attr("value"));
         }
         else if (py::isinstance(inst, insts.Del))
         {
@@ -438,6 +444,11 @@ private:
         auto value = loadvar(val);
         auto name = val.attr("name").cast<std::string>();
         return builder.create<plier::GetattrOp>(get_current_loc(), value, name);
+    }
+
+    void setitem(const py::handle& target, const py::handle& index, const py::handle& value)
+    {
+        builder.create<plier::SetItemOp>(get_current_loc(), loadvar(target), loadvar(index), loadvar(value));
     }
 
     void storevar(mlir::Value val, const py::handle& inst)

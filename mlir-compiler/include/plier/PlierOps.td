@@ -139,6 +139,15 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
 ];
 }
 
+def SetItemOp : Plier_Op<"setitem", []> {
+    let arguments = (ins
+                     AnyType:$target,
+                     AnyType:$index,
+                     AnyType:$value);
+
+    let builders = [];
+}
+
 def GetiterOp : Plier_Op<"getiter", [NoSideEffect]> {
     let arguments = (ins
                      AnyType:$value);
