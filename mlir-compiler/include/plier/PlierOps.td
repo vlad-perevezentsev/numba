@@ -65,6 +65,18 @@ def BinOp : Plier_Op<"binop", []> {
   ];
 }
 
+def UnaryOp : Plier_Op<"unary", []> {
+  let arguments = (ins
+                   AnyType:$value,
+                   StrAttr:$op);
+
+  let results = (outs AnyType);
+
+  let builders = [
+      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, ::mlir::StringRef op">
+  ];
+}
+
 def CastOp : Plier_Op<"cast", []> {
     let arguments = (ins
                      AnyType:$value);

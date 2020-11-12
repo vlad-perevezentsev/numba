@@ -559,6 +559,49 @@ struct BinOpLowering : public mlir::OpRewritePattern<plier::BinOp>
     }
 };
 
+mlir::Value negate(mlir::Value val, mlir::Location loc, mlir::PatternRewriter &rewriter)
+{
+    auto type = val.getType();
+    if (auto itype = type.dyn_cast<mlir::IntegerType>())
+    {
+        // TODO: not int negation?
+        auto zero = rewriter.create<mlir::ConstantOp>(loc, mlir::IntegerAttr::get(itype, 0));
+        return rewriter.create<mlir::SubIOp>(loc, zero, val);
+    }
+    if (type.isa<mlir::FloatType>())
+    {
+        return rewriter.create<mlir::NegFOp>(loc, val);
+    }
+    llvm_unreachable("negate: unsupported type");
+}
+
+struct UnaryOpLowering : public mlir::OpRewritePattern<plier::UnaryOp>
+{
+    UnaryOpLowering(mlir::TypeConverter &/*typeConverter*/,
+                    mlir::MLIRContext *context):
+        OpRewritePattern(context) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::UnaryOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto arg = op.getOperand();
+        auto type = arg.getType();
+        if (!is_supported_type(type))
+        {
+            return mlir::failure();
+        }
+        if (op.op() == "+")
+        {
+            rewriter.replaceOp(op, arg);
+            return mlir::success();
+        }
+        assert(op.op() == "-");
+        auto new_val = negate(arg, op.getLoc(), rewriter);
+        rewriter.replaceOp(op, new_val);
+        return mlir::success();
+    }
+};
+
 mlir::Block* get_next_block(mlir::Block* block)
 {
     assert(nullptr != block);
@@ -1090,6 +1133,7 @@ void PlierToStdPass::runOnOperation()
         SelectOpLowering,
         CondBrOpLowering,
         BinOpLowering,
+        UnaryOpLowering,
         ScfIfRewrite,
         ScfWhileRewrite,
         FixupWhileTypes

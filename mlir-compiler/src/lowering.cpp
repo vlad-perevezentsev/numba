@@ -113,8 +113,10 @@ struct inst_handles
     };
 
     static const constexpr OpId ops_names[] = {
-        {"+",  "add"},
-        {"-",  "sub"},
+        {"+",  "add"}, // binary
+        {"+",  "pos"}, // unary
+        {"-",  "sub"}, // binary
+        {"-",  "neg"}, // unary
         {"*",  "mul"},
 
         {">",  "gt"},
@@ -282,6 +284,7 @@ private:
         using func_t = mlir::Value (plier_lowerer::*)(const py::handle&);
         const std::pair<mlir::StringRef, func_t> handlers[] = {
             {"binop", &plier_lowerer::lower_binop},
+            {"unary", &plier_lowerer::lower_unary},
             {"cast", &plier_lowerer::lower_cast},
             {"call", &plier_lowerer::lower_call},
             {"phi", &plier_lowerer::lower_phi},
@@ -401,17 +404,26 @@ private:
         auto rhs_name = expr.attr("rhs");
         auto lhs = loadvar(lhs_name);
         auto rhs = loadvar(rhs_name);
-        return resolve_op(lhs, rhs, op);
+        auto op_name = resolve_op(op);
+        return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
     }
 
-    mlir::Value resolve_op(mlir::Value lhs, mlir::Value rhs, const py::handle& op)
+    mlir::Value lower_unary(const py::handle& expr)
+    {
+        auto op = expr.attr("fn");
+        auto val_name = expr.attr("value");
+        auto val = loadvar(val_name);
+        auto op_name = resolve_op(op);
+        return builder.create<plier::UnaryOp>(get_current_loc(), val, op_name);
+    }
+
+    llvm::StringRef resolve_op(const py::handle& op)
     {
         for (auto elem : llvm::zip(insts.ops_names, insts.ops_handles))
         {
             if (op.is(std::get<1>(elem)))
             {
-                auto op_name = std::get<0>(elem).op;
-                return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
+                return std::get<0>(elem).op;
             }
         }
 
