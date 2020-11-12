@@ -273,8 +273,7 @@ private:
         }
         if (py::isinstance(value, insts.Const))
         {
-            auto val = get_const_val(value.attr("value"));
-            return builder.create<plier::ConstOp>(get_current_loc(), val);
+            return get_const(value.attr("value"));
         }
         if (py::isinstance(value, insts.Global))
         {
@@ -498,17 +497,25 @@ private:
         builder.create<mlir::BranchOp>(get_current_loc(), mlir::None, block);
     }
 
-    mlir::Attribute get_const_val(const py::handle& val)
+    mlir::Value get_const(const py::handle& val)
     {
+        auto get_val = [&](mlir::Attribute attr)
+        {
+            return builder.create<plier::ConstOp>(get_current_loc(), attr);
+        };
         if (py::isinstance<py::int_>(val))
         {
-            return builder.getI64IntegerAttr(val.cast<int64_t>());
+            return get_val(builder.getI64IntegerAttr(val.cast<int64_t>()));
         }
         if (py::isinstance<py::float_>(val))
         {
-            return builder.getF64FloatAttr(val.cast<double>());
+            return get_val(builder.getF64FloatAttr(val.cast<double>()));
         }
-        report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
+        if (py::isinstance<py::none>(val))
+        {
+            return get_val(builder.getUnitAttr());
+        }
+        report_error(llvm::Twine("get_const unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
     mlir::FunctionType get_func_type(const py::handle& fnargs, const py::handle& restype)

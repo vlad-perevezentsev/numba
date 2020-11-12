@@ -268,7 +268,7 @@ void PlierToLinalgPass::runOnOperation()
     mlir::TypeConverter type_converter;
     // Convert unknown types to itself
     type_converter.addConversion([](mlir::Type type) { return type; });
-    populate_std_type_converter(type_converter);
+    populate_std_type_converter(getContext(), type_converter);
     type_converter.addConversion([&](plier::PyType type)->llvm::Optional<mlir::Type>
     {
         auto ret =  map_plier_type(type_converter, type);

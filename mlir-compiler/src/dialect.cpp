@@ -65,6 +65,11 @@ PyType PyType::getUndefined(mlir::MLIRContext* context)
     return Base::get(context, "");
 }
 
+PyType PyType::getNone(mlir::MLIRContext* context)
+{
+    return Base::get(context, "none");
+}
+
 llvm::StringRef PyType::getName() const
 {
     return getImpl()->name;

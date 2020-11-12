@@ -27,6 +27,7 @@ public:
 
     static PyType get(mlir::MLIRContext *context, mlir::StringRef name);
     static PyType getUndefined(mlir::MLIRContext *context);
+    static PyType getNone(mlir::MLIRContext *context);
 
     mlir::StringRef getName() const;
 };

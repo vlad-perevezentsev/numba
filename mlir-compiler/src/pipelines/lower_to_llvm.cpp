@@ -261,7 +261,7 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
         return;
     }
     auto old_type = func.getType();
-    assert(old_type.getNumResults() == 1);
+    assert(old_type.getNumResults() <= 1);
     auto& ctx = *old_type.getContext();
     llvm::SmallVector<mlir::Type, 8> args;
 
@@ -320,11 +320,11 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
         }
     };
 
-    add_arg(ptr(old_type.getResult(0)));
+    auto orig_ret_type = (old_type.getNumResults() != 0 ? old_type.getResult(0) : type_helper.ptr(type_helper.i(8)));
+    add_arg(ptr(orig_ret_type));
     add_arg(ptr(ptr(getExceptInfoType(type_helper))));
 
     auto old_args = old_type.getInputs();
-//    std::copy(old_args.begin(), old_args.end(), std::back_inserter(args));
     for (auto arg : old_args)
     {
         process_arg(arg);
@@ -350,16 +350,19 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
             rewriter.replaceOpWithNewOp<mlir::LLVM::ReturnOp>(op, ret);
         };
 
+        rewriter.setInsertionPoint(op);
+        auto addr = op.getParentRegion()->front().getArgument(0);
         if (op.getNumOperands() == 0)
         {
-            rewriter.setInsertionPoint(op);
+            assert(addr.getType().isa<mlir::LLVM::LLVMPointerType>());
+            auto null_type = addr.getType().cast<mlir::LLVM::LLVMPointerType>().getElementType();
+            auto ll_val = rewriter.create<mlir::LLVM::NullOp>(op.getLoc(), null_type);
+            rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), ll_val, addr);
             insert_ret();
             return mlir::success();
         }
         else if (op.getNumOperands() == 1)
         {
-            rewriter.setInsertionPoint(op);
-            auto addr = op.getParentRegion()->front().getArgument(0);
             auto val = op.getOperand(0);
             auto ll_ret_type = type_converter.convertType(val.getType());
             assert(static_cast<bool>(ll_ret_type));

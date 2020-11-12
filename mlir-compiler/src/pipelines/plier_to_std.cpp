@@ -242,8 +242,8 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
         auto operands = op.getOperands();
         auto func = mlir::cast<mlir::FuncOp>(op.getParentOp());
         auto res_types = func.getType().getResults();
-        assert(res_types.size() == operands.size());
-        bool converted = false;
+        assert(res_types.size() == operands.size() || res_types.empty());
+        bool converted = (res_types.size() != operands.size());
         llvm::SmallVector<mlir::Value, 4> new_vals;
         for (auto it : llvm::zip(operands, res_types))
         {
@@ -1138,9 +1138,9 @@ void PlierToStdPass::runOnOperation()
     mlir::TypeConverter type_converter;
     // Convert unknown types to itself
     type_converter.addConversion([](mlir::Type type) { return type; });
-    populate_std_type_converter(type_converter);
 
     auto context = &getContext();
+    populate_std_type_converter(*context, type_converter);
 
     mlir::OwningRewritePatternList patterns;
 
@@ -1182,16 +1182,24 @@ void populate_plier_to_std_pipeline(mlir::OpPassManager& pm)
 }
 }
 
-void populate_std_type_converter(mlir::TypeConverter& converter)
+void populate_std_type_converter(mlir::MLIRContext& context, mlir::TypeConverter& converter)
 {
-    converter.addConversion([](mlir::Type type)->llvm::Optional<mlir::Type>
+    auto none_type = plier::PyType::getNone(&context);
+    converter.addConversion(
+    [none_type](mlir::Type type, llvm::SmallVectorImpl<mlir::Type>& ret_types)
+    ->llvm::Optional<mlir::LogicalResult>
     {
+        if (type == none_type)
+        {
+            return mlir::success();
+        }
         auto ret = map_plier_type(type);
         if (!ret)
         {
             return llvm::None;
         }
-        return ret;
+        ret_types.push_back(ret);
+        return mlir::success();
     });
 }
 
