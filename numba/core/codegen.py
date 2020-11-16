@@ -738,7 +738,12 @@ class CPUCodeLibrary(CodeLibrary):
         self._final_module.link_in(ll_module)
 
     def finalize(self):
-        require_global_compiler_lock()
+        """
+        Finalize the library.  After this call, nothing can be added anymore.
+        Finalization involves various stages of code optimization and
+        linking.
+        """
+        #require_global_compiler_lock()
 
         # Report any LLVM-related problems to the user
         self._codegen._check_llvm_bugs()
