@@ -78,6 +78,7 @@ struct inst_handles
         Return = mod.attr("Return");
         Branch = mod.attr("Branch");
         Jump = mod.attr("Jump");
+        SetItem = mod.attr("SetItem");
 
         Arg = mod.attr("Arg");
         Expr = mod.attr("Expr");
@@ -99,6 +100,7 @@ struct inst_handles
     py::handle Return;
     py::handle Branch;
     py::handle Jump;
+    py::handle SetItem;
 
     py::handle Arg;
     py::handle Expr;
@@ -113,9 +115,13 @@ struct inst_handles
     };
 
     static const constexpr OpId ops_names[] = {
-        {"+",  "add"},
-        {"-",  "sub"},
+        {"+",  "add"}, // binary
+        {"+",  "pos"}, // unary
+        {"-",  "sub"}, // binary
+        {"-",  "neg"}, // unary
         {"*",  "mul"},
+        {"/",  "truediv"},
+        {"//", "floordiv"},
 
         {">",  "gt"},
         {">=", "ge"},
@@ -222,6 +228,10 @@ private:
             auto val = lower_assign(inst, target);
             storevar(val, target);
         }
+        else if (py::isinstance(inst, insts.SetItem))
+        {
+            setitem(inst.attr("target"), inst.attr("index"), inst.attr("value"));
+        }
         else if (py::isinstance(inst, insts.Del))
         {
             delvar(inst.attr("value"));
@@ -263,8 +273,7 @@ private:
         }
         if (py::isinstance(value, insts.Const))
         {
-            auto val = get_const_val(value.attr("value"));
-            return builder.create<plier::ConstOp>(get_current_loc(), val);
+            return get_const(value.attr("value"));
         }
         if (py::isinstance(value, insts.Global))
         {
@@ -282,6 +291,7 @@ private:
         using func_t = mlir::Value (plier_lowerer::*)(const py::handle&);
         const std::pair<mlir::StringRef, func_t> handlers[] = {
             {"binop", &plier_lowerer::lower_binop},
+            {"unary", &plier_lowerer::lower_unary},
             {"cast", &plier_lowerer::lower_cast},
             {"call", &plier_lowerer::lower_call},
             {"phi", &plier_lowerer::lower_phi},
@@ -401,17 +411,26 @@ private:
         auto rhs_name = expr.attr("rhs");
         auto lhs = loadvar(lhs_name);
         auto rhs = loadvar(rhs_name);
-        return resolve_op(lhs, rhs, op);
+        auto op_name = resolve_op(op);
+        return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
     }
 
-    mlir::Value resolve_op(mlir::Value lhs, mlir::Value rhs, const py::handle& op)
+    mlir::Value lower_unary(const py::handle& expr)
+    {
+        auto op = expr.attr("fn");
+        auto val_name = expr.attr("value");
+        auto val = loadvar(val_name);
+        auto op_name = resolve_op(op);
+        return builder.create<plier::UnaryOp>(get_current_loc(), val, op_name);
+    }
+
+    llvm::StringRef resolve_op(const py::handle& op)
     {
         for (auto elem : llvm::zip(insts.ops_names, insts.ops_handles))
         {
             if (op.is(std::get<1>(elem)))
             {
-                auto op_name = std::get<0>(elem).op;
-                return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
+                return std::get<0>(elem).op;
             }
         }
 
@@ -424,6 +443,11 @@ private:
         auto value = loadvar(val);
         auto name = val.attr("name").cast<std::string>();
         return builder.create<plier::GetattrOp>(get_current_loc(), value, name);
+    }
+
+    void setitem(const py::handle& target, const py::handle& index, const py::handle& value)
+    {
+        builder.create<plier::SetItemOp>(get_current_loc(), loadvar(target), loadvar(index), loadvar(value));
     }
 
     void storevar(mlir::Value val, const py::handle& inst)
@@ -473,13 +497,25 @@ private:
         builder.create<mlir::BranchOp>(get_current_loc(), mlir::None, block);
     }
 
-    mlir::Attribute get_const_val(const py::handle& val)
+    mlir::Value get_const(const py::handle& val)
     {
+        auto get_val = [&](mlir::Attribute attr)
+        {
+            return builder.create<plier::ConstOp>(get_current_loc(), attr);
+        };
         if (py::isinstance<py::int_>(val))
         {
-            return builder.getI64IntegerAttr(val.cast<int64_t>());
+            return get_val(builder.getI64IntegerAttr(val.cast<int64_t>()));
         }
-        report_error(llvm::Twine("get_const_val unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
+        if (py::isinstance<py::float_>(val))
+        {
+            return get_val(builder.getF64FloatAttr(val.cast<double>()));
+        }
+        if (py::isinstance<py::none>(val))
+        {
+            return get_val(builder.getUnitAttr());
+        }
+        report_error(llvm::Twine("get_const unhandled type \"") + py::str(val.get_type()).cast<std::string>() + "\"");
     }
 
     mlir::FunctionType get_func_type(const py::handle& fnargs, const py::handle& restype)

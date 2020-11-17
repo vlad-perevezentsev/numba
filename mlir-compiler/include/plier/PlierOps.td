@@ -65,6 +65,18 @@ def BinOp : Plier_Op<"binop", []> {
   ];
 }
 
+def UnaryOp : Plier_Op<"unary", []> {
+  let arguments = (ins
+                   AnyType:$value,
+                   StrAttr:$op);
+
+  let results = (outs AnyType);
+
+  let builders = [
+      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, ::mlir::StringRef op">
+  ];
+}
+
 def CastOp : Plier_Op<"cast", []> {
     let arguments = (ins
                      AnyType:$value);
@@ -125,6 +137,15 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, "
                "::mlir::Value index_var, unsigned index">
 ];
+}
+
+def SetItemOp : Plier_Op<"setitem", []> {
+    let arguments = (ins
+                     AnyType:$target,
+                     AnyType:$index,
+                     AnyType:$value);
+
+    let builders = [];
 }
 
 def GetiterOp : Plier_Op<"getiter", [NoSideEffect]> {

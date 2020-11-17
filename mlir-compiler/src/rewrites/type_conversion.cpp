@@ -25,9 +25,9 @@ mlir::LogicalResult setBlockSig(
             builder.setInsertionPointToStart(&block);
             auto res = builder.create<plier::CastOp>(builder.getUnknownLoc(), arg.getType(), arg);
             arg.replaceUsesWithIf(res, [&](mlir::OpOperand& op)
-                                  {
-                                      return op.getOwner() != res;
-                                  });
+            {
+                return op.getOwner() != res;
+            });
 
             for (auto& use : block.getUses())
             {

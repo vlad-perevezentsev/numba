@@ -24,13 +24,28 @@ class TestMlirBasic(TestCase):
             lambda a, b: a + b,
             lambda a, b: a - b,
             lambda a, b: a * b,
-            # TODO: div
+            lambda a, b: a / b,
+            # TODO: floordiv
             ]
 
         for py_func in py_funcs:
             jit_func = njit(py_func)
             for a, b in itertools.product(_test_values, _test_values):
-                assert_equal(py_func(a, b), jit_func(a, b))
+                try:
+                    assert_equal(py_func(a, b), jit_func(a, b))
+                except ZeroDivisionError:
+                    pass
+
+    def test_unary_ops(self):
+        py_funcs = [
+            lambda a: +a,
+            lambda a: -a,
+            ]
+
+        for py_func in py_funcs:
+            jit_func = njit(py_func)
+            for a in _test_values:
+                assert_equal(py_func(a), jit_func(a))
 
     def test_cmp_ops(self):
         py_funcs = [
@@ -51,6 +66,8 @@ class TestMlirBasic(TestCase):
         py_funcs = [
             lambda a: a + 42,
             lambda a: 43 + a,
+            lambda a: a + 42.5,
+            lambda a: 43.5 + a,
             ]
 
         for py_func in py_funcs:
@@ -67,6 +84,18 @@ class TestMlirBasic(TestCase):
         jit_func = njit(py_func)
         for val in _test_values:
             assert_equal(py_func(val), jit_func(val))
+
+    def test_ret_none(self):
+        def py_func1():
+            return None
+
+        def py_func2():
+            pass
+
+        jit_func1 = njit(py_func1)
+        jit_func2 = njit(py_func2)
+        assert_equal(py_func1(), jit_func1())
+        assert_equal(py_func2(), jit_func2())
 
     def test_jump(self):
         def py_func(a, b):

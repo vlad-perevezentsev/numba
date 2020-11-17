@@ -65,6 +65,11 @@ PyType PyType::getUndefined(mlir::MLIRContext* context)
     return Base::get(context, "");
 }
 
+PyType PyType::getNone(mlir::MLIRContext* context)
+{
+    return Base::get(context, "none");
+}
+
 llvm::StringRef PyType::getName() const
 {
     return getImpl()->name;
@@ -106,6 +111,12 @@ void BinOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                   mlir::Value lhs, mlir::Value rhs, mlir::StringRef op) {
     BinOp::build(builder, state, PyType::getUndefined(state.getContext()), lhs,
                  rhs, op);
+}
+
+void UnaryOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                  mlir::Value value, mlir::StringRef op) {
+    UnaryOp::build(builder, state, PyType::getUndefined(state.getContext()),
+                   value, op);
 }
 
 mlir::OpFoldResult CastOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
