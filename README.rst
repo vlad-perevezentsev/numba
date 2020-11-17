@@ -1,97 +1,96 @@
-Numba with PyDPPL
-=================
+*****
+Numba with patches for numba-dppy
+*****
 
-========
-1. What?
-========
+.. image:: https://badges.gitter.im/numba/numba.svg
+   :target: https://gitter.im/numba/numba?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge
+   :alt: Gitter
 
-DPPL proof-of-concept backend for NUMBA to support compilation for Intel CPU and
-GPU architectures. The present implementation of DPPL is based on OpenCL 2.1,
-but is likely to change in the future to rely on Sycl/DPC++ or Intel Level-0
-driver API.
+.. image:: https://img.shields.io/badge/discuss-on%20discourse-blue
+   :target: https://numba.discourse.group/
+   :alt: Discourse
 
-===============
-2. Perquisites?
-===============
+Patches for numba-dppy
+######################
 
-- Bash                 : In the system and not as default Shell
-- Tar                  : To extract files
-- Git                  : To fetch required dependencies listed below
-- C/C++ compiler       : To build the dependencies
-- Cmake                : For managing build process of dependencies
-- Python3              : Version 3 is required
-- Conda or miniconda   : Can be found at https://docs.conda.io/en/latest/miniconda.html
-- OpenCL 2.1 driver    : DPPL currently works for both Intel GPUs and CPUs is a correct OpenCL driver version is found on the system.
-Note. To use the GPU users should be added to "video" user group on Linux systems.
+See https://github.com/IntelPython/numba-dppy.
+If `numba-dppy` package is installed this version of Numba provides
+additional features.
+Without `numba-dppy` package this version of Numba works like original Numba.
 
+A Just-In-Time Compiler for Numerical Functions in Python
+#########################################################
 
-The following requisites will need to be present in the system. Refer to next section for more details.
-*******************************************************************************************************
+Numba is an open source, NumPy-aware optimizing compiler for Python sponsored
+by Anaconda, Inc.  It uses the LLVM compiler project to generate machine code
+from Python syntax.
 
-- NUMBA v0.51          : The DPPL backend has only been tested for NUMBA v0.51.
-                         The included install script downloads and applies
-                         the DPPy patch to the correct NUMBA version.
+Numba can compile a large subset of numerically-focused Python, including many
+NumPy functions.  Additionally, Numba has support for automatic
+parallelization of loops, generation of GPU-accelerated code, and creation of
+ufuncs and C callbacks.
 
-- LLVM-SPIRV translator: Used for SPIRV generation from LLVM IR.
+For more information about Numba, see the Numba homepage:
+http://numba.pydata.org
 
-- LLVMDEV              : To support LLVM IR generation.
-
-- Others               : All existing dependencies for NUMBA, such as llvmlite, also apply to DPPL.
-
-==================
-3. How to install?
-==================
-Install Pre-requisites
-**********************
-Make sure the following dependencies of NUMBA-PyDPPL are installed
-in your conda environemtn:
-
-- llvmlite =0.33
-- spirv-tools
-- llvm-spirv
-- llvmdev
-- dpCtl =0.3
-
-Make sure the dependencies are installed with consistent version of LLVM 10.
-
-Install dpCtl backend
-*********************
-NUMBA-PyDPPL also depend on dpCtl backend. It can be found `here <https://github.com/IntelPython/dpCtl>`_.
-Please install dpCtl from package.
-
-Install NUMBA-PyDPPL
-********************
-After all the dependencies are installed please run ``build_for_develop.sh``
-to get a local installation of NUMBA-PyDPPL.
-
-================
-4. Running tests
-================
-
-To make sure the installation was successful, try running the examples and the
-test suite:
-
-    $PATH_TO_NUMBA-PyDPPL/numba/dppl/examples/
-
-To run the test suite execute the following:
-
-.. code-block:: bash
-
-    python -m numba.runtests numba.dppl.tests
-
-===========================
-5. How Tos and Known Issues
-===========================
-
-Refer the HowTo.rst guide for an overview of the programming semantics,
-examples, supported functionalities, and known issues.
-
-* Installing while Intel oneAPI Base Toolkit is activated have shown to throw error
-while installation of NUMBA-PyDPPL because of incompatible TBB interface,
-one way around that is to temporarily move env variable TBBROOT to something else*
-
-===================
-6. Reporting issues
+Supported Platforms
 ===================
 
-Please use https://github.com/IntelPython/numba/issues to report issues and bugs.
+* Operating systems and CPU:
+
+  - Linux: x86 (32-bit), x86_64, ppc64le (POWER8 and 9), ARMv7 (32-bit),
+    ARMv8 (64-bit)
+  - Windows: x86, x86_64
+  - macOS: x86_64
+
+* (Optional) Accelerators and GPUs:
+
+  * NVIDIA GPUs (Kepler architecture or later) via CUDA driver on Linux, Windows,
+    macOS (< 10.14)
+  * AMD GPUs via ROCm driver on Linux
+
+Dependencies
+============
+
+* Python versions: 3.6-3.8
+* llvmlite 0.34.*
+* NumPy >=1.15 (can build with 1.11 for ABI compatibility)
+
+Optionally:
+
+* Scipy >=1.0.0 (for ``numpy.linalg`` support)
+
+
+Installing
+==========
+
+The easiest way to install Numba and get updates is by using the Anaconda
+Distribution: https://www.anaconda.com/download
+
+::
+
+   $ conda install numba
+
+For more options, see the Installation Guide: http://numba.pydata.org/numba-doc/latest/user/installing.html
+
+Documentation
+=============
+
+http://numba.pydata.org/numba-doc/latest/index.html
+
+
+Mailing Lists
+=============
+
+Join the Numba mailing list numba-users@continuum.io:
+https://groups.google.com/a/continuum.io/d/forum/numba-users
+
+Some old archives are at: http://librelist.com/browser/numba/
+
+
+Continuous Integration
+======================
+
+.. image:: https://dev.azure.com/numba/numba/_apis/build/status/numba.numba?branchName=master
+    :target: https://dev.azure.com/numba/numba/_build/latest?definitionId=1?branchName=master
+    :alt: Azure Pipelines
