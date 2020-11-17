@@ -1,5 +1,5 @@
 *****
-Numba
+Numba with patches for numba-dppy
 *****
 
 .. image:: https://badges.gitter.im/numba/numba.svg
@@ -13,6 +13,14 @@ Numba
 .. image:: https://zenodo.org/badge/3659275.svg
    :target: https://zenodo.org/badge/latestdoi/3659275
    :alt: Zenodo DOI
+
+Patches for numba-dppy
+######################
+
+See https://github.com/IntelPython/numba-dppy.
+If `numba-dppy` package is installed this version of Numba provides
+additional features.
+Without `numba-dppy` package this version of Numba works like original Numba.
 
 A Just-In-Time Compiler for Numerical Functions in Python
 #########################################################
