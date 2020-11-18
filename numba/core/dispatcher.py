@@ -800,7 +800,14 @@ class Siblings:
         return {'hit': self._stat_hit, 'miss': self._stat_miss}
 
 
-class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase):
+import abc
+
+class DispatcherMeta(abc.ABCMeta):
+    def __instancecheck__(self, other):
+        return type(type(other)) == DispatcherMeta
+
+
+class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase, metaclass=DispatcherMeta):
     """
     Implementation of user-facing dispatcher objects (i.e. created using
     the @jit decorator).
@@ -1069,6 +1076,9 @@ class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase):
             siblings.save_cache(retarget, disp)
         # Call the new dispatcher
         return disp(*args, **kwargs)
+
+    def get_compiled(self):
+        return self
 
 
 class LiftedCode(serialize.ReduceMixin, _MemoMixin, _DispatcherBase):
