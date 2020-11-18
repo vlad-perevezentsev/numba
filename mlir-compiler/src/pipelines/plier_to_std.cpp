@@ -670,110 +670,129 @@ struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
     mlir::LogicalResult matchAndRewrite(
         mlir::CondBranchOp op, mlir::PatternRewriter &rewriter) const override
     {
-        auto true_block = op.getTrueDest();
-        auto post_block = get_next_block(true_block);
-        if (nullptr == post_block)
+        auto getDest = [&](bool true_dest)
         {
-            return mlir::failure();
-        }
-        auto false_block = op.getFalseDest();
-        if (false_block != post_block &&
-            get_next_block(false_block) != post_block)
-        {
-            return mlir::failure();
-        }
-
-        auto start_block = op.getOperation()->getBlock();
-        if (!is_blocks_different({start_block, true_block, post_block}))
-        {
-            return mlir::failure();
-        }
-        auto cond = op.condition();
-
-        mlir::BlockAndValueMapping mapper;
-        llvm::SmallVector<mlir::Value, 8> yield_vals;
-        auto copy_block = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Block& block)
-        {
-            mapper.clear();
-            for (auto& op : block.without_terminator())
-            {
-                builder.clone(op, mapper);
-            }
-            auto term = mlir::cast<mlir::BranchOp>(block.getTerminator());
-            yield_vals.clear();
-            yield_vals.reserve(term.getNumOperands());
-            for (auto op : term.getOperands())
-            {
-                yield_vals.emplace_back(mapper.lookupOrDefault(op));
-            }
-            builder.create<mlir::scf::YieldOp>(loc, yield_vals);
+            return true_dest ? op.getTrueDest() : op.getFalseDest();
         };
-
-        auto true_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+        auto getOperands = [&](bool true_dest)
         {
-            copy_block(builder, loc, *true_block);
+            return true_dest ? op.getTrueOperands() : op.getFalseOperands();
         };
-
-        bool has_else = false_block != post_block;
-        auto res_types = mlir::cast<mlir::BranchOp>(true_block->getTerminator()).getOperandTypes();
-        mlir::scf::IfOp if_op;
-        if (has_else)
+        auto loc = op.getLoc();
+        for (bool reverse : {false, true})
         {
-            auto false_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+            auto true_block = getDest(!reverse);
+            auto post_block = get_next_block(true_block);
+            if (nullptr == post_block)
             {
-                copy_block(builder, loc, *false_block);
+                continue;
+            }
+            auto false_block = getDest(reverse);
+            if (false_block != post_block &&
+                get_next_block(false_block) != post_block)
+            {
+                continue;
+            }
+
+            auto start_block = op.getOperation()->getBlock();
+            if (!is_blocks_different({start_block, true_block, post_block}))
+            {
+                continue;
+            }
+            mlir::Value cond = op.condition();
+            if (reverse)
+            {
+                auto i1 = mlir::IntegerType::get(1, op.getContext());
+                auto one = rewriter.create<mlir::ConstantOp>(loc, mlir::IntegerAttr::get(i1, 1));
+                cond = rewriter.create<mlir::XOrOp>(loc, cond, one);
+            }
+
+            mlir::BlockAndValueMapping mapper;
+            llvm::SmallVector<mlir::Value, 8> yield_vals;
+            auto copy_block = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Block& block)
+            {
+                mapper.clear();
+                for (auto& op : block.without_terminator())
+                {
+                    builder.clone(op, mapper);
+                }
+                auto term = mlir::cast<mlir::BranchOp>(block.getTerminator());
+                yield_vals.clear();
+                yield_vals.reserve(term.getNumOperands());
+                for (auto op : term.getOperands())
+                {
+                    yield_vals.emplace_back(mapper.lookupOrDefault(op));
+                }
+                builder.create<mlir::scf::YieldOp>(loc, yield_vals);
             };
-            if_op = rewriter.create<mlir::scf::IfOp>(
-                op.getLoc(),
-                res_types,
-                cond,
-                true_body,
-                false_body);
-        }
-        else
-        {
-            if (res_types.empty())
+
+            auto true_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
             {
-                if_op = rewriter.create<mlir::scf::IfOp>(
-                    op.getLoc(),
-                    res_types,
-                    cond,
-                    true_body);
-            }
-            else
+                copy_block(builder, loc, *true_block);
+            };
+
+            bool has_else = false_block != post_block;
+            auto res_types = mlir::cast<mlir::BranchOp>(true_block->getTerminator()).getOperandTypes();
+            mlir::scf::IfOp if_op;
+            if (has_else)
             {
                 auto false_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
                 {
-                    auto res = op.getFalseOperands();
-                    yield_vals.clear();
-                    yield_vals.reserve(res.size());
-                    for (auto op : res)
-                    {
-                        yield_vals.emplace_back(mapper.lookupOrDefault(op));
-                    }
-                    builder.create<mlir::scf::YieldOp>(loc, yield_vals);
+                    copy_block(builder, loc, *false_block);
                 };
                 if_op = rewriter.create<mlir::scf::IfOp>(
-                    op.getLoc(),
+                    loc,
                     res_types,
                     cond,
                     true_body,
                     false_body);
             }
-        }
+            else
+            {
+                if (res_types.empty())
+                {
+                    if_op = rewriter.create<mlir::scf::IfOp>(
+                        loc,
+                        res_types,
+                        cond,
+                        true_body);
+                }
+                else
+                {
+                    auto false_body = [&](mlir::OpBuilder& builder, mlir::Location loc)
+                    {
+                        auto res = getOperands(reverse);
+                        yield_vals.clear();
+                        yield_vals.reserve(res.size());
+                        for (auto op : res)
+                        {
+                            yield_vals.emplace_back(mapper.lookupOrDefault(op));
+                        }
+                        builder.create<mlir::scf::YieldOp>(loc, yield_vals);
+                    };
+                    if_op = rewriter.create<mlir::scf::IfOp>(
+                        loc,
+                        res_types,
+                        cond,
+                        true_body,
+                        false_body);
+                }
+            }
 
-        rewriter.create<mlir::BranchOp>(op.getLoc(), post_block, if_op.getResults());
-        rewriter.eraseOp(op);
+            rewriter.create<mlir::BranchOp>(loc, post_block, if_op.getResults());
+            rewriter.eraseOp(op);
 
-        if (true_block->getUsers().empty())
-        {
-            erase_blocks(true_block);
+            if (true_block->getUsers().empty())
+            {
+                erase_blocks(true_block);
+            }
+            if (false_block->getUsers().empty())
+            {
+                erase_blocks(false_block);
+            }
+            return mlir::success();
         }
-        if (false_block->getUsers().empty())
-        {
-            erase_blocks(false_block);
-        }
-        return mlir::success();
+        return mlir::failure();
     }
 };
 
