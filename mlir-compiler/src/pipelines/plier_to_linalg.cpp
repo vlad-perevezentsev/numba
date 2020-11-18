@@ -200,6 +200,14 @@ mlir::LogicalResult numpy_rewrite(
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
+    if (name == "<built-in function len>" && check_numpy_args(args, 1))
+    {
+        auto loc = op.getLoc();
+        mlir::Value dim = rewriter.create<mlir::DimOp>(loc, args[0], 0);
+        mlir::Value res = rewriter.create<plier::CastOp>(loc, op.getType(), dim);
+        rewriter.replaceOp(op, res);
+        return mlir::success();
+    }
     return mlir::failure();
 }
 
