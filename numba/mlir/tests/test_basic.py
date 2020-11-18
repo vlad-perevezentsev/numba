@@ -149,6 +149,16 @@ class TestMlirBasic(TestCase):
         jit_func = njit(py_func)
         assert_equal(py_func(10, 20, 2), jit_func(10, 20, 2))
 
+    def test_range_use_index_after(self):
+        def py_func(n):
+            res = 0
+            for i in range(0, n, 2):
+                res = res + i
+            return res + i
+
+        jit_func = njit(py_func)
+        assert_equal(py_func(9), jit_func(9))
+
     def test_range_if(self):
         def py_func(n):
             res = 0
@@ -158,6 +168,37 @@ class TestMlirBasic(TestCase):
                     res = res + i
                 else:
                     res1 = res1 + i * 2
+            return res + res1
+
+        jit_func = njit(py_func)
+        assert_equal(py_func(10), jit_func(10))
+
+    def test_range_ifs(self):
+        def py_func(n):
+            res = 0
+            for i in range(n):
+                if i == 2:
+                    res = res + 2
+                elif i == 7:
+                    res = res + 5
+                elif i == 99:
+                    res = res + 99
+                else:
+                    res = res + i
+            return res
+
+        jit_func = njit(py_func)
+        assert_equal(py_func(10), jit_func(10))
+
+    def test_range_continue(self):
+        def py_func(n):
+            res = 0
+            res1 = 2
+            for i in range(n):
+                res = res + i
+                if i < 5:
+                    continue
+                res1 = res1 + i * 2
             return res + res1
 
         jit_func = njit(py_func)

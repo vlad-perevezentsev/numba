@@ -27,6 +27,16 @@ Op get_next_op(llvm::iterator_range<mlir::Block::iterator>& iters)
     }
     return res;
 }
+
+mlir::Value get_last_iter_value(
+    mlir::PatternRewriter& builder, mlir::Location loc,
+    mlir::Value lower_bound, mlir::Value upper_bound, mlir::Value step)
+{
+    auto len = builder.create<mlir::SubIOp>(loc, upper_bound, lower_bound);
+    auto count = builder.create<mlir::SignedDivIOp>(loc, len, step);
+    auto inc = builder.create<mlir::MulIOp>(loc, count, step);
+    return builder.create<mlir::AddIOp>(loc, lower_bound, inc);
+}
 }
 
 mlir::LogicalResult lower_while_to_for(
@@ -139,8 +149,16 @@ mlir::LogicalResult lower_while_to_for(
                         assert(it2.index() < loop_op.getNumResults());
                         auto new_res = loop_op.getResult(static_cast<unsigned>(it2.index()));
                         old_res.replaceAllUsesWith(new_res);
+                        break;
                     }
                 }
+                if (operand == pairfirst && !old_res.getUsers().empty())
+                {
+                    auto val = get_last_iter_value(builder, loc, lower_bound, upper_bound, step);
+                    auto new_res = builder.create<plier::CastOp>(loc, old_res.getType(), val);
+                    old_res.replaceAllUsesWith(new_res);
+                }
+                assert(old_res.getUsers().empty());
             }
         });
 
