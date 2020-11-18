@@ -402,6 +402,8 @@ class TestDispatcher(BaseTest):
         def foo(x):
             return x + 1
 
+        foo = foo.get_compiled()
+
         self.assertEqual(foo(1), 2)
 
         # get serialization memo
