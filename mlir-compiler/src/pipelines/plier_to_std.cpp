@@ -1184,7 +1184,7 @@ void PlierToStdPass::runOnOperation()
         CallOpLowering
         >(type_converter, context, &basic_rewrite);
 
-    mlir::populateStdExpandDivsRewritePatterns(context, patterns);
+    mlir::populateStdExpandOpsPatterns(context, patterns);
 
     for (auto *op : context->getRegisteredOperations())
     {
