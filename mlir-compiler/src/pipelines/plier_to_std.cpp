@@ -1134,23 +1134,11 @@ struct PlierToStdPass :
     {
         registry.insert<plier::PlierDialect>();
         registry.insert<mlir::StandardOpsDialect>();
+        registry.insert<mlir::scf::SCFDialect>();
     }
 
     void runOnOperation() override;
 };
-
-template<typename T>
-mlir::Value cast_materializer(
-    mlir::OpBuilder& builder, T type, mlir::ValueRange inputs,
-    mlir::Location loc)
-{
-    assert(inputs.size() == 1);
-    if (type == inputs[0].getType())
-    {
-        return inputs[0];
-    }
-    return builder.create<plier::CastOp>(loc, type, inputs[0]);
-}
 
 void PlierToStdPass::runOnOperation()
 {
@@ -1227,7 +1215,7 @@ void register_plier_to_std_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_high_lowering_stage();
-        sink(plier_to_std_pipeline_name(), {stage.begin}, {stage.end}, &populate_plier_to_std_pipeline);
+        sink(plier_to_std_pipeline_name(), {stage.begin}, {stage.end}, {}, &populate_plier_to_std_pipeline);
     });
 }
 
