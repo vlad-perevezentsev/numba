@@ -328,7 +328,8 @@ mlir::Value index_cast(mlir::Value value, mlir::Location loc, mlir::OpBuilder& b
 {
     if (!value.getType().isa<mlir::IndexType>())
     {
-        return builder.create<plier::CastOp>(loc, mlir::IndexType::get(value.getContext()), value);
+        auto index_type = mlir::IndexType::get(value.getContext());
+        return builder.create<mlir::IndexCastOp>(loc, value, index_type);
     }
     return value;
 }
@@ -358,7 +359,7 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
         if (value.getType() != elem_type)
         {
             // TODO
-            rewriter.create<plier::CastOp>(loc, elem_type, value);
+            value = rewriter.create<plier::CastOp>(loc, elem_type, value);
 //            return mlir::failure();
         }
 
