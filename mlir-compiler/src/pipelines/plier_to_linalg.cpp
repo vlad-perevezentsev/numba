@@ -266,6 +266,112 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
     }
 };
 
+bool can_replace_ssa(mlir::Operation* op)
+{
+    assert(nullptr != op);
+    if (op->getParentRegion()->getBlocks().size() != 1)
+    {
+        return false;
+    }
+    auto parent = op->getParentOp();
+    if (mlir::isa<mlir::FuncOp>(parent))
+    {
+        return true;
+    }
+    return false;
+//    return can_replace_ssa(parent);
+}
+
+bool replace_ssa_in_block(mlir::Value value, mlir::Value new_value, mlir::PatternRewriter &rewriter)
+{
+    auto new_op = new_value.getDefiningOp();
+    assert(nullptr != new_op);
+    auto block = new_op->getBlock();
+    bool changed = false;
+    for (auto user : llvm::make_early_inc_range(value.getUsers()))
+    {
+        if (auto op = block->findAncestorOpInBlock(*user))
+        {
+            if (op != new_op && new_op->isBeforeInBlock(op))
+            {
+                rewriter.updateRootInPlace(user, [&]()
+                {
+                    for (auto it2 : llvm::enumerate(user->getOperands()))
+                    {
+                        if (it2.value() == value)
+                        {
+                            user->setOperand(static_cast<unsigned>(it2.index()), new_value);
+                            break;
+                        }
+                    }
+                });
+                changed = true;
+            }
+        }
+    }
+    return changed;
+}
+
+bool replace_ssa_value(mlir::Value value, mlir::Value new_value, mlir::PatternRewriter &rewriter)
+{
+    bool changed = replace_ssa_in_block(value, new_value, rewriter);
+    auto parent = new_value.getDefiningOp()->getParentOp();
+    if (auto func = mlir::dyn_cast<mlir::FuncOp>(parent))
+    {
+        // TODO update return
+        return changed;
+    }
+    llvm_unreachable("Unhandled parent op");
+}
+
+mlir::Value index_cast(mlir::Value value, mlir::Location loc, mlir::OpBuilder& builder)
+{
+    if (!value.getType().isa<mlir::IndexType>())
+    {
+        return builder.create<plier::CastOp>(loc, mlir::IndexType::get(value.getContext()), value);
+    }
+    return value;
+}
+
+template<typename T>
+struct SetitemOpLowering : public mlir::OpRewritePattern<T>
+{
+    using mlir::OpRewritePattern<T>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        T op, mlir::PatternRewriter &rewriter) const override
+    {
+        if (!can_replace_ssa(op))
+        {
+            return mlir::failure();
+        }
+        auto target = op.getOperand(0);
+        auto index = op.getOperand(1);
+        auto value = op.getOperand(2);
+        auto target_type = target.getType().template dyn_cast<mlir::RankedTensorType>();
+        if (!target_type)
+        {
+            return mlir::failure();
+        }
+        auto elem_type = target_type.getElementType();
+        auto loc = op.getLoc();
+        if (value.getType() != elem_type)
+        {
+            // TODO
+            rewriter.create<plier::CastOp>(loc, elem_type, value);
+//            return mlir::failure();
+        }
+
+        auto new_tensor = rewriter.create<mlir::TensorFromElementsOp>(loc, value);
+        auto new_index = index_cast(index, loc, rewriter);
+        mlir::Value one = rewriter.create<mlir::ConstantIndexOp>(loc, 1);
+        auto new_value = rewriter.create<mlir::SubTensorInsertOp>(loc, new_tensor, target, new_index, one, one);
+        replace_ssa_value(target, new_value, rewriter);
+        rewriter.eraseOp(op);
+        return mlir::success();
+    }
+};
+
 struct PlierToLinalgPass :
     public mlir::PassWrapper<PlierToLinalgPass, mlir::OperationPass<mlir::ModuleOp>>
 {
@@ -308,7 +414,8 @@ void PlierToLinalgPass::runOnOperation()
 
     patterns.insert<
         GetitemOpLowering<plier::GetItemOp>,
-        GetitemOpLowering<plier::StaticGetItemOp>
+        GetitemOpLowering<plier::StaticGetItemOp>,
+        SetitemOpLowering<plier::SetItemOp>
         >(&getContext());
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
