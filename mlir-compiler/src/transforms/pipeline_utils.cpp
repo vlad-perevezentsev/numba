@@ -16,7 +16,7 @@ mlir::ModuleOp get_module(mlir::Operation* op)
 
 namespace
 {
-const constexpr llvm::StringLiteral jump_marker_name("pipeline_jump_markers");
+const constexpr llvm::StringLiteral jump_marker_name("#plier.pipeline_jump_markers");
 }
 
 mlir::ArrayAttr get_pipeline_jump_markers(mlir::ModuleOp module)

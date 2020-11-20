@@ -55,14 +55,17 @@ struct PassManagerStage
 
     std::pair<PassManagerStage*, mlir::StringAttr> get_jump(mlir::ArrayAttr names) const
     {
-        for (auto& it : jumps)
+        if (names)
         {
-            for (auto name : names)
+            for (auto& it : jumps)
             {
-                auto str = name.cast<mlir::StringAttr>();
-                if (it.first == str)
+                for (auto name : names)
                 {
-                    return {it.second, str};
+                    auto str = name.cast<mlir::StringAttr>();
+                    if (it.first == str)
+                    {
+                        return {it.second, str};
+                    }
                 }
             }
         }

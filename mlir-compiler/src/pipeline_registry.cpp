@@ -190,6 +190,8 @@ void PipelineRegistry::populate_pass_manager(populate_pass_manager_t result_sink
         topo_visit(get_pipeline_info(name), iter_func, visit_func);
     }
 
+    assert(nullptr != first_pipeline);
+
     auto iterate_pipelines = [&](auto func)
     {
         for (auto current = first_pipeline; nullptr != current;
@@ -201,14 +203,21 @@ void PipelineRegistry::populate_pass_manager(populate_pass_manager_t result_sink
 
     iterate_pipelines([&](PipelineInfo& pipeline)
     {
-        for (auto jump : pipeline.jumps)
+        if (!pipeline.jumps.empty())
         {
-            get_pipeline_info(jump).jump_target = true;
+            for (auto jump : pipeline.jumps)
+            {
+                get_pipeline_info(jump).jump_target = true;
+            }
+            if (nullptr != pipeline.next)
+            {
+                pipeline.next->jump_target = true;
+            }
         }
     });
 
     llvm::SmallVector<pipeline_funt_t, 32> funcs;
-    llvm::StringRef current_name;
+    llvm::StringRef current_name = first_pipeline->name;
     llvm::ArrayRef<llvm::StringRef> current_jumps;
     result_sink([&](auto add_stage)
     {
@@ -234,13 +243,13 @@ void PipelineRegistry::populate_pass_manager(populate_pass_manager_t result_sink
         };
         iterate_pipelines([&](PipelineInfo& pipeline)
         {
-            if (&pipeline == first_pipeline || pipeline.jump_target || !pipeline.jumps.empty())
+            if (pipeline.jump_target)
             {
                 flush_stages();
                 current_name = pipeline.name;
-                current_jumps = pipeline.jumps;
             }
             funcs.emplace_back(pipeline.func);
+            current_jumps = pipeline.jumps;
         });
         flush_stages();
     });
