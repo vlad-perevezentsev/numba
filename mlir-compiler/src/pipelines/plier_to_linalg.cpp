@@ -331,7 +331,7 @@ void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
 
     pm.addPass(mlir::createLinalgFusionOfTensorOpsPass());
 
-    pm.addPass(mlir::createLinalgBufferizePass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
 
