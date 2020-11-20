@@ -178,9 +178,17 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
         topo_visit(get_pipeline_info(name), iter_func, visit_func);
     }
 
-    for (auto current = first_pipeline; nullptr != current;
-         current = current->next)
-     {
-        current->func(pm);
-     }
+    auto iterate_pipelines = [&](auto func)
+    {
+        for (auto current = first_pipeline; nullptr != current;
+             current = current->next)
+        {
+            func(current);
+        }
+    };
+
+    iterate_pipelines([&](PipelineInfo* pipeline)
+    {
+        pipeline->func(pm);
+    });
 }
