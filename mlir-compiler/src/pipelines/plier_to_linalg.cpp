@@ -360,6 +360,7 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
         {
             // TODO
             value = rewriter.create<plier::CastOp>(loc, elem_type, value);
+            rerun_std_pipeline(op);
 //            return mlir::failure();
         }
 
