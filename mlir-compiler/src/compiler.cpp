@@ -15,6 +15,8 @@
 
 #include "pipeline_registry.hpp"
 
+#include "transforms/pipeline_utils.hpp"
+
 namespace
 {
 struct PassManagerStage
@@ -51,19 +53,20 @@ struct PassManagerStage
         jumps.emplace_back(name, stage);
     }
 
-    PassManagerStage* get_jump(mlir::ArrayAttr names) const
+    std::pair<PassManagerStage*, mlir::StringAttr> get_jump(mlir::ArrayAttr names) const
     {
         for (auto& it : jumps)
         {
             for (auto name : names)
             {
-                if (it.first == name.cast<mlir::StringAttr>())
+                auto str = name.cast<mlir::StringAttr>();
+                if (it.first == str)
                 {
-                    return it.second;
+                    return {it.second, str};
                 }
             }
         }
-        return nullptr;
+        return {nullptr, nullptr};
     }
 
     void set_next_stage(PassManagerStage* stage)
@@ -73,7 +76,7 @@ struct PassManagerStage
         next_stage = stage;
     }
 
-    PassManagerStage* get_next_sgate() const
+    PassManagerStage* get_next_stage() const
     {
         return next_stage;
     }
@@ -156,8 +159,17 @@ struct PassManagerSchedule
             {
                 return mlir::failure();
             }
-            // TODO: jumps
-            current = current->get_next_sgate();
+            auto markers = get_pipeline_jump_markers(module);
+            auto jump_target = current->get_jump(markers);
+            if (nullptr != jump_target.first)
+            {
+                remove_pipeline_jump_marker(module, jump_target.second);
+                current = jump_target.first;
+            }
+            else
+            {
+                current = current->get_next_stage();
+            }
         }
         while (nullptr != current);
         return mlir::success();

@@ -28,6 +28,7 @@ set(SOURCES_LIST
     src/rewrites/cast_lowering.cpp
     src/rewrites/type_conversion.cpp
     src/transforms/loop_utils.cpp
+    src/transforms/pipeline_utils.cpp
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
@@ -46,6 +47,7 @@ set(HEADERS_LIST
     src/rewrites/cast_lowering.hpp
     src/rewrites/type_conversion.hpp
     src/transforms/loop_utils.hpp
+    src/transforms/pipeline_utils.hpp
     src/compiler.hpp
     src/lowering.hpp
     src/pipeline_registry.hpp
