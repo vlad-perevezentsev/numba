@@ -18,6 +18,7 @@
 #include "plier/dialect.hpp"
 
 #include "pipelines/plier_to_std.hpp"
+#include "transforms/pipeline_utils.hpp"
 #include "rewrites/call_lowering.hpp"
 #include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
@@ -131,6 +132,13 @@ mlir::Type get_elem_type(mlir::Type type)
     llvm_unreachable("get_elem_type: unknown type");
 }
 
+void rerun_std_pipeline(mlir::Operation* op)
+{
+    assert(nullptr != op);
+    auto marker = mlir::StringAttr::get(plier_to_std_pipeline_name(), op->getContext());
+    add_pipeline_jump_marker(get_module(op), marker);
+}
+
 mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
@@ -205,6 +213,7 @@ mlir::LogicalResult numpy_rewrite(
         auto loc = op.getLoc();
         mlir::Value dim = rewriter.create<mlir::DimOp>(loc, args[0], 0);
         mlir::Value res = rewriter.create<plier::CastOp>(loc, op.getType(), dim);
+        rerun_std_pipeline(op);
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
@@ -358,7 +367,7 @@ void register_plier_to_linalg_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_high_lowering_stage();
-        sink(plier_to_linalg_pipeline_name(), {plier_to_std_pipeline_name()}, {stage.end}, {}, &populate_plier_to_linalg_pipeline);
+        sink(plier_to_linalg_pipeline_name(), {plier_to_std_pipeline_name()}, {stage.end}, {plier_to_std_pipeline_name()}, &populate_plier_to_linalg_pipeline);
     });
 }
 
