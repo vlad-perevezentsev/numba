@@ -350,7 +350,7 @@ void register_plier_to_linalg_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_high_lowering_stage();
-        sink(plier_to_linalg_pipeline_name(), {plier_to_std_pipeline_name()}, {stage.end}, &populate_plier_to_linalg_pipeline);
+        sink(plier_to_linalg_pipeline_name(), {plier_to_std_pipeline_name()}, {stage.end}, {}, &populate_plier_to_linalg_pipeline);
     });
 }
 

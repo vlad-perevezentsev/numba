@@ -90,6 +90,7 @@ void PipelineRegistry::populate_pass_manager(mlir::OpPassManager& pm) const
     auto sink = [&](llvm::StringRef pipeline_name,
                     llvm::ArrayRef<llvm::StringRef> prev_pipelines,
                     llvm::ArrayRef<llvm::StringRef> next_pipelines,
+                    llvm::ArrayRef<llvm::StringRef> jumps,
                     pipeline_funt_t func)
     {
         assert(!pipeline_name.empty());

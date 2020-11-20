@@ -24,6 +24,7 @@ public:
         llvm::StringRef pipeline_name,
         llvm::ArrayRef<llvm::StringRef> prev_pipelines,
         llvm::ArrayRef<llvm::StringRef> next_pipelines,
+        llvm::ArrayRef<llvm::StringRef> jumps,
         pipeline_funt_t func);
     using registry_entry_t = std::function<void(llvm::function_ref<registry_entry_sink_t>)>;
 

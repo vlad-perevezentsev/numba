@@ -21,11 +21,11 @@ void register_base_pipeline(PipelineRegistry& registry)
         {
             if (0 == i)
             {
-                sink(passes[i], {}, {}, dummy_pass_func);
+                sink(passes[i], {}, {}, {}, dummy_pass_func);
             }
             else
             {
-                sink(passes[i], {passes[i - 1]}, {}, dummy_pass_func);
+                sink(passes[i], {passes[i - 1]}, {}, {}, dummy_pass_func);
             }
         });
     }
