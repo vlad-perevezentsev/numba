@@ -261,6 +261,7 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
         {
             llvm_unreachable("Invalid getitem");
         }
+        rerun_std_pipeline(op);
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
@@ -329,7 +330,9 @@ mlir::Value index_cast(mlir::Value value, mlir::Location loc, mlir::OpBuilder& b
     if (!value.getType().isa<mlir::IndexType>())
     {
         auto index_type = mlir::IndexType::get(value.getContext());
-        return builder.create<mlir::IndexCastOp>(loc, value, index_type);
+        auto res = builder.create<plier::CastOp>(loc, index_type, value);
+        rerun_std_pipeline(res);
+        return res;
     }
     return value;
 }
@@ -396,24 +399,6 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
     mlir::LogicalResult matchAndRewrite(
         T op, mlir::PatternRewriter &rewriter) const override
     {
-        auto rewrite_memref = [&]()
-        {
-            auto target = op.getOperand(0);
-            auto index = op.getOperand(1);
-            auto value = op.getOperand(2);
-            auto loc = op.getLoc();
-            auto ind = index_cast(index, loc, rewriter);
-            auto elem_type = target.getType().template cast<mlir::MemRefType>().getElementType();
-            if (value.getType() != elem_type)
-            {
-                // TODO
-                value = rewriter.create<plier::CastOp>(loc, elem_type, value);
-                rerun_std_pipeline(op);
-            }
-            auto store = rewriter.create<mlir::StoreOp>(loc, value, target, ind);
-            rewriter.eraseOp(op);
-        };
-
         auto get_target_type = [&]()
         {
             return op.getOperand(0).getType();
@@ -454,12 +439,29 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
                     }
                 }
             }
-            rewrite_memref();
         }
-        else if (auto target_type = get_target_type().template dyn_cast<mlir::MemRefType>())
+        else if (get_target_type().template isa<mlir::MemRefType>())
         {
-            rewrite_memref();
+            // nothing
         }
+        else
+        {
+            return mlir::failure();
+        }
+        auto target = op.getOperand(0);
+        auto index = op.getOperand(1);
+        auto value = op.getOperand(2);
+        auto loc = op.getLoc();
+        auto ind = index_cast(index, loc, rewriter);
+        auto elem_type = target.getType().template cast<mlir::MemRefType>().getElementType();
+        if (value.getType() != elem_type)
+        {
+            // TODO
+            value = rewriter.create<plier::CastOp>(loc, elem_type, value);
+            rerun_std_pipeline(op);
+        }
+        auto store = rewriter.create<mlir::StoreOp>(loc, value, target, ind);
+        rewriter.eraseOp(op);
         return mlir::success();
     }
 };
