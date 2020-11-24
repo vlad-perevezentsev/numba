@@ -335,7 +335,7 @@ mlir::Value index_cast(mlir::Value value, mlir::Location loc, mlir::OpBuilder& b
 }
 
 template<typename T>
-struct SetitemOpLowering : public mlir::OpRewritePattern<T>
+struct SetitemOpLoweringSSA : public mlir::OpRewritePattern<T>
 {
     using mlir::OpRewritePattern<T>::OpRewritePattern;
 
@@ -386,6 +386,82 @@ struct PlierToLinalgPass :
     }
 
     void runOnOperation() override;
+};
+
+template<typename T>
+struct SetitemOpLowering : public mlir::OpRewritePattern<T>
+{
+    using mlir::OpRewritePattern<T>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        T op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto rewrite_memref = [&]()
+        {
+            auto target = op.getOperand(0);
+            auto index = op.getOperand(1);
+            auto value = op.getOperand(2);
+            auto loc = op.getLoc();
+            auto ind = index_cast(index, loc, rewriter);
+            auto elem_type = target.getType().template cast<mlir::MemRefType>().getElementType();
+            if (value.getType() != elem_type)
+            {
+                // TODO
+                value = rewriter.create<plier::CastOp>(loc, elem_type, value);
+                rerun_std_pipeline(op);
+            }
+            auto store = rewriter.create<mlir::StoreOp>(loc, value, target, ind);
+            rewriter.eraseOp(op);
+        };
+
+        auto get_target_type = [&]()
+        {
+            return op.getOperand(0).getType();
+        };
+
+        if (auto target_type = get_target_type().template dyn_cast<mlir::RankedTensorType>())
+        {
+            auto target = op.getOperand(0);
+            mlir::OpBuilder::InsertionGuard g(rewriter);
+            if (auto parent_op = target.getDefiningOp())
+            {
+                rewriter.setInsertionPoint(parent_op);
+            }
+            else
+            {
+                rewriter.setInsertionPointToStart(target.getParentBlock());
+            }
+            auto memref_type = mlir::MemRefType::get(target_type.getShape(), target_type.getElementType());
+            auto memref = rewriter.create<mlir::TensorToMemrefOp>(target.getLoc(), memref_type, target);
+            for (auto& use : llvm::make_early_inc_range(target.getUses()))
+            {
+                auto use_op = use.getOwner();
+                assert(nullptr != use_op);
+                if (use_op != memref)
+                {
+                    if (mlir::isa<plier::SetItemOp>(use_op))
+                    {
+                        use_op->setOperand(use.getOperandNumber(), memref);
+                    }
+                    else
+                    {
+                        rewriter.setInsertionPoint(use_op);
+                        auto new_val = rewriter.create<mlir::TensorLoadOp>(use_op->getLoc(), memref);
+                        rewriter.updateRootInPlace(use_op, [&]()
+                        {
+                            use_op->setOperand(use.getOperandNumber(), new_val);
+                        });
+                    }
+                }
+            }
+            rewrite_memref();
+        }
+        else if (auto target_type = get_target_type().template dyn_cast<mlir::MemRefType>())
+        {
+            rewrite_memref();
+        }
+        return mlir::success();
+    }
 };
 
 void PlierToLinalgPass::runOnOperation()
@@ -464,8 +540,8 @@ void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
     pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(1024));
     pm.addNestedPass<mlir::FuncOp>(mlir::createBufferHoistingPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createBufferDeallocationPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
 
     pm.addPass(std::make_unique<LowerLinalgPass>());
 }
