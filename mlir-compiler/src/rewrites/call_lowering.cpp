@@ -8,6 +8,17 @@ llvm::StringRef extract_bound_func_name(llvm::StringRef name)
     auto len = name.find(' ');
     return name.substr(0, len);
 }
+
+bool check_class_name(llvm::StringRef& str, llvm::StringRef prefix)
+{
+    llvm::StringRef temp = str;
+    if (temp.consume_front(prefix) && temp.consume_front("(") && temp.consume_back(")"))
+    {
+        str = temp;
+        return true;
+    }
+    return false;
+}
 }
 
 CallOpLowering::CallOpLowering(
@@ -30,13 +41,13 @@ mlir::LogicalResult CallOpLowering::matchAndRewrite(plier::PyCallOp op, mlir::Pa
     auto name = func_type.cast<plier::PyType>().getName();
     llvm::SmallVector<mlir::Type, 8> arg_types;
     llvm::SmallVector<mlir::Value, 8> args;
-    if (name.consume_front("Function(") && name.consume_back(")"))
+    if (check_class_name(name, "Function"))
     {
         llvm::copy(llvm::drop_begin(op.getOperandTypes(), 1), std::back_inserter(arg_types));
         llvm::copy(llvm::drop_begin(op.getOperands(), 1), std::back_inserter(args));
         // TODO kwargs
     }
-    else if (name.consume_front("BoundFunction(") && name.consume_back(")"))
+    else if (check_class_name(name, "BoundFunction"))
     {
         auto getattr = mlir::dyn_cast<plier::GetattrOp>(operands[0].getDefiningOp());
         if (!getattr)
