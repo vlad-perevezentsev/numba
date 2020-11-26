@@ -131,7 +131,7 @@ mlir::OpFoldResult CastOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
 }
 
 void PyCallOp::build(mlir::OpBuilder &builder, mlir::OperationState &state, mlir::Value func,
-                     mlir::ValueRange args,
+                     llvm::StringRef func_name, mlir::ValueRange args,
                      mlir::ArrayRef<std::pair<std::string, mlir::Value>> kwargs) {
     auto ctx = builder.getContext();
     mlir::SmallVector<mlir::Value, 16> all_args;
@@ -146,7 +146,7 @@ void PyCallOp::build(mlir::OpBuilder &builder, mlir::OperationState &state, mlir
         all_args.push_back(a.second);
     }
     PyCallOp::build(builder, state, PyType::getUndefined(state.getContext()),
-        func, all_args, kw_start, mlir::ArrayAttr::get(kw_names, ctx));
+        func, all_args, func_name, kw_start, mlir::ArrayAttr::get(kw_names, ctx));
 }
 
 void BuildTupleOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
