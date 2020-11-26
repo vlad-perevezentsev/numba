@@ -1116,16 +1116,6 @@ mlir::LogicalResult basic_rewrite(
     return mlir::failure();
 }
 
-mlir::Operation* change_op_ret_type(mlir::Operation* op,
-                                    mlir::PatternRewriter& rewriter,
-                                    llvm::ArrayRef<mlir::Type> types)
-{
-    assert(nullptr != op);
-    mlir::OperationState state(op->getLoc(), op->getName().getStringRef(),
-                                   op->getOperands(), types, op->getAttrs());
-    return rewriter.createOperation(state);
-}
-
 struct PlierToStdPass :
     public mlir::PassWrapper<PlierToStdPass, mlir::OperationPass<mlir::ModuleOp>>
 {
