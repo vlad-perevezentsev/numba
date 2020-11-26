@@ -467,14 +467,6 @@ class NoPythonBackend(LoweringPass):
         )
         return True
 
-# TODO
-import numpy
-_mlir_func_names = {
-        id(range) : 'range',
-        id(len) : 'len',
-        id(bool) : 'bool',
-        id(numpy.add) : 'numpy.add'
-    }
 
 @register_pass(mutates_CFG=True, analysis_only=False)
 class MlirBackend(LoweringPass):
@@ -483,7 +475,8 @@ class MlirBackend(LoweringPass):
 
     def __init__(self):
         # LoweringPass.__init__(self)
-        pass
+        import numba.mlir.func_registry
+        self._get_func_name = numba.mlir.func_registry.get_func_name
 
     def run_pass(self, state):
         targetctx = state.targetctx
@@ -521,7 +514,7 @@ class MlirBackend(LoweringPass):
     def _resolve_func_name(self, obj):
         if isinstance(obj, types.Function):
             func = obj.typing_key
-            return _mlir_func_names.get(id(func), None)
+            return self._get_func_name(func)
         if isinstance(obj, types.BoundFunction):
             return str(obj.typing_key)
         return None
