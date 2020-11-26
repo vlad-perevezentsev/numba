@@ -471,6 +471,8 @@ class NoPythonBackend(LoweringPass):
 import numpy
 _mlir_func_names = {
         id(range) : 'range',
+        id(len) : 'len',
+        id(bool) : 'bool',
         id(numpy.add) : 'numpy.add'
     }
 

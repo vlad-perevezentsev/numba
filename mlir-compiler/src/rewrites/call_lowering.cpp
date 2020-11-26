@@ -66,5 +66,5 @@ mlir::LogicalResult CallOpLowering::matchAndRewrite(plier::PyCallOp op, mlir::Pa
         return mlir::failure();
     }
 
-    return resolver(op, name, args, rewriter);
+    return resolver(op, op.func_name(), args, rewriter);
 }

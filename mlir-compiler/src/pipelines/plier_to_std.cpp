@@ -1103,8 +1103,8 @@ mlir::LogicalResult basic_rewrite(
 {
     using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
     std::pair<llvm::StringRef, func_t> handlers[] = {
-        {"<class 'bool'>", lower_bool_cast},
-        {"<class 'range'>", lower_range},
+        {"bool", lower_bool_cast},
+        {"range", lower_range},
     };
     for (auto& handler : handlers)
     {

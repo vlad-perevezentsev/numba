@@ -392,7 +392,13 @@ private:
             kwargs_list.push_back({name.cast<std::string>(), loadvar(val_name)});
         }
 
-        auto func_name = func_name_resolver(typemap(py_func)).cast<std::string>();
+        auto py_func_name = func_name_resolver(typemap(py_func));
+        if (py_func_name.is_none())
+        {
+            report_error(llvm::Twine("Can't resolve function: ") + py::str(typemap(py_func)).cast<std::string>());
+        }
+
+        auto func_name = py_func_name.cast<std::string>();
 
         return builder.create<plier::PyCallOp>(get_current_loc(), func, func_name,
                                                args_list, kwargs_list);
