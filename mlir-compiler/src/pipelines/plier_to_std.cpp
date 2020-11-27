@@ -1097,10 +1097,66 @@ mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Val
     return mlir::success(success);
 }
 
+mlir::FuncOp get_lib_symbol(
+    mlir::ModuleOp mod, llvm::StringRef name, mlir::FunctionType type,
+    mlir::PatternRewriter& rewriter)
+{
+    assert(!name.empty());
+    if (auto op = mlir::dyn_cast_or_null<mlir::FuncOp>(mod.lookupSymbol(name)))
+    {
+        assert(op.getType() == type);
+        return op;
+    }
+
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+    // Insert before module terminator.
+    rewriter.setInsertionPoint(mod.getBody(),
+                               std::prev(mod.getBody()->end()));
+    auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), name, type);
+    func.setPrivate();
+    return func;
+}
+
+mlir::LogicalResult lower_math_func(
+    plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
+    mlir::PatternRewriter& rewriter)
+{
+    auto ret_type = map_plier_type(op.getType());
+    auto valid_type = [&](mlir::Type type)
+    {
+        return ret_type == type && type.isa<mlir::Float32Type, mlir::Float64Type>();
+    };
+    if (ret_type && name.consume_front("math.") && args.size() == 1 &&
+        valid_type(args[0].getType()))
+    {
+        auto is_float = ret_type.isa<mlir::Float32Type>();
+        auto func_type = mlir::FunctionType::get(args[0].getType(), ret_type, op.getContext());
+        auto module = op.getParentOfType<mlir::ModuleOp>();
+        mlir::FuncOp func;
+        if (is_float)
+        {
+            func = get_lib_symbol(module, name.str() + "f", func_type, rewriter);
+        }
+        else // double
+        {
+            func = get_lib_symbol(module, name, func_type, rewriter);
+        }
+        auto call = rewriter.create<mlir::CallOp>(op.getLoc(), func, args);
+        rewriter.replaceOp(op, call.getResults());
+        return mlir::success();
+    }
+
+    return mlir::failure();
+}
+
 mlir::LogicalResult basic_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
+    if (mlir::succeeded(lower_math_func(op, name, args, rewriter)))
+    {
+        return mlir::success();
+    }
     using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
     std::pair<llvm::StringRef, func_t> handlers[] = {
         {"bool", lower_bool_cast},
