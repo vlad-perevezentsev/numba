@@ -529,10 +529,13 @@ void LowerLinalgPass::runOnOperation()
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
-void populate_plier_to_linalg_pipeline(mlir::OpPassManager& pm)
+void populate_plier_to_linalg_gen_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
+}
 
+void populate_plier_to_linalg_opt_pipeline(mlir::OpPassManager& pm)
+{
     pm.addPass(mlir::createLinalgFusionOfTensorOpsPass());
 
     pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
@@ -554,11 +557,17 @@ void register_plier_to_linalg_pipeline(PipelineRegistry& registry)
     registry.register_pipeline([](auto sink)
     {
         auto stage = get_high_lowering_stage();
-        sink(plier_to_linalg_pipeline_name(), {plier_to_std_pipeline_name()}, {stage.end}, {plier_to_std_pipeline_name()}, &populate_plier_to_linalg_pipeline);
+        sink(plier_to_linalg_gen_pipeline_name(), {plier_to_std_pipeline_name()}, {plier_to_linalg_opt_pipeline_name()}, {plier_to_std_pipeline_name()}, &populate_plier_to_linalg_gen_pipeline);
+        sink(plier_to_linalg_opt_pipeline_name(), {plier_to_linalg_gen_pipeline_name()}, {stage.end}, {}, &populate_plier_to_linalg_opt_pipeline);
     });
 }
 
-llvm::StringRef plier_to_linalg_pipeline_name()
+llvm::StringRef plier_to_linalg_gen_pipeline_name()
 {
-    return "plier_to_linalg";
+    return "plier_to_linalg_gen";
+}
+
+llvm::StringRef plier_to_linalg_opt_pipeline_name()
+{
+    return "plier_to_linalg_opt";
 }
