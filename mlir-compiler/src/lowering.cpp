@@ -35,21 +35,10 @@ std::string serialize_mod(const llvm::Module& mod)
 {
     std::string ret;
     llvm::raw_string_ostream stream(ret);
-//    mod.print(stream, nullptr);
     llvm::WriteBitcodeToFile(mod, stream);
     stream.flush();
     return ret;
 }
-
-//template<typename T>
-//std::string to_str(T& obj)
-//{
-//    std::string ret;
-//    llvm::raw_string_ostream stream(ret);
-//    obj.print(stream);
-//    stream.flush();
-//    return ret;
-//}
 
 std::vector<std::pair<int, py::handle>> get_blocks(const py::object& func)
 {
@@ -134,7 +123,7 @@ struct inst_handles
     std::array<py::handle, llvm::array_lengthof(ops_names)> ops_handles;
 };
 
-struct plier_lowerer
+struct plier_lowerer final
 {
     plier_lowerer(mlir::MLIRContext& context):
         ctx(context),
@@ -148,6 +137,7 @@ struct plier_lowerer
     {
         auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
         typemap = compilation_context["typemap"];
+        func_name_resolver = compilation_context["resolve_func"];
         auto name = compilation_context["fnname"]().cast<std::string>();
         auto typ = get_func_type(compilation_context["fnargs"], compilation_context["restype"]);
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
@@ -175,6 +165,7 @@ private:
     };
     py::handle current_instr;
     py::handle typemap;
+    py::handle func_name_resolver;
 
     std::unordered_map<mlir::Block*, BlockInfo> block_infos;
 
@@ -381,7 +372,8 @@ private:
 
     mlir::Value lower_call(const py::handle& expr)
     {
-        auto func = loadvar(expr.attr("func"));
+        auto py_func = expr.attr("func");
+        auto func = loadvar(py_func);
         auto args = expr.attr("args").cast<py::list>();
         auto kws = expr.attr("kws").cast<py::list>();
         auto vararg = expr.attr("vararg");
@@ -400,7 +392,15 @@ private:
             kwargs_list.push_back({name.cast<std::string>(), loadvar(val_name)});
         }
 
-        return builder.create<plier::PyCallOp>(get_current_loc(), func,
+        auto py_func_name = func_name_resolver(typemap(py_func));
+        if (py_func_name.is_none())
+        {
+            report_error(llvm::Twine("Can't resolve function: ") + py::str(typemap(py_func)).cast<std::string>());
+        }
+
+        auto func_name = py_func_name.cast<std::string>();
+
+        return builder.create<plier::PyCallOp>(get_current_loc(), func, func_name,
                                                args_list, kwargs_list);
     }
 
@@ -441,7 +441,7 @@ private:
     {
         auto val = inst.attr("value");
         auto value = loadvar(val);
-        auto name = val.attr("name").cast<std::string>();
+        auto name = inst.attr("attr").cast<std::string>();
         return builder.create<plier::GetattrOp>(get_current_loc(), value, name);
     }
 

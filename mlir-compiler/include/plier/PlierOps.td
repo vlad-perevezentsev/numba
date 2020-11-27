@@ -89,6 +89,7 @@ def PyCallOp : Plier_Op<"call", []> {
   let arguments = (ins
                    AnyType:$func,
                    Variadic<AnyType>:$args,
+                   StrAttr:$func_name,
                    UI32Attr:$kw_start,
                    ArrayAttr:$kw_names);
 
@@ -96,7 +97,7 @@ def PyCallOp : Plier_Op<"call", []> {
 
   let builders = [
       OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value func, "
-                "::mlir::ValueRange args, "
+                "::mlir::StringRef func_name, ::mlir::ValueRange args, "
                 "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>> kwargs">
   ];
 }

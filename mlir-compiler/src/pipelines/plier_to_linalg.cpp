@@ -143,7 +143,7 @@ mlir::LogicalResult numpy_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
-    if (name == "<ufunc 'add'>" && check_numpy_args(args, 2))
+    if (name == "numpy.add" && check_numpy_args(args, 2))
     {
         auto loc = op.getLoc();
         mlir::Value inputs[] = { args[0], args[1] };
@@ -208,7 +208,7 @@ mlir::LogicalResult numpy_rewrite(
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
-    if (name == "<built-in function len>" && check_numpy_args(args, 1))
+    if (name == "len" && check_numpy_args(args, 1))
     {
         auto loc = op.getLoc();
         mlir::Value dim = rewriter.create<mlir::DimOp>(loc, args[0], 0);

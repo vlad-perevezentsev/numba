@@ -467,6 +467,7 @@ class NoPythonBackend(LoweringPass):
         )
         return True
 
+
 @register_pass(mutates_CFG=True, analysis_only=False)
 class MlirBackend(LoweringPass):
 
@@ -474,7 +475,8 @@ class MlirBackend(LoweringPass):
 
     def __init__(self):
         # LoweringPass.__init__(self)
-        pass
+        import numba.mlir.func_registry
+        self._get_func_name = numba.mlir.func_registry.get_func_name
 
     def run_pass(self, state):
         targetctx = state.targetctx
@@ -503,10 +505,19 @@ class MlirBackend(LoweringPass):
         ctx['fnargs'] = lambda: state.args
         ctx['restype'] = lambda: state.return_type
         ctx['fnname'] = lambda: fn_name
+        ctx['resolve_func'] = self._resolve_func_name
         import mlir_compiler
         mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)
         setattr(state, 'mlir_blob', mod)
         return True
+
+    def _resolve_func_name(self, obj):
+        if isinstance(obj, types.Function):
+            func = obj.typing_key
+            return self._get_func_name(func)
+        if isinstance(obj, types.BoundFunction):
+            return str(obj.typing_key)
+        return None
 
 
 @register_pass(mutates_CFG=True, analysis_only=False)
