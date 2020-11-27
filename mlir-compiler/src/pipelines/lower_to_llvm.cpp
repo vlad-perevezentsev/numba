@@ -206,6 +206,8 @@ struct MemRefConversionCache
         auto loc = builder.getUnknownLoc();
         auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
         new_func.setPrivate();
+        auto alwaysinline = mlir::StringAttr::get("alwaysinline", builder.getContext());
+        new_func.setAttr("passthrough", mlir::ArrayAttr::get(alwaysinline, builder.getContext()));
         module.push_back(new_func);
         cache.insert({memref_type, new_func});
         mlir::OpBuilder::InsertionGuard guard(builder);
