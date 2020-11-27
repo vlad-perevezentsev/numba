@@ -143,7 +143,7 @@ struct plier_lowerer final
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         if (compilation_context["fastmath"]().cast<bool>())
         {
-            func.setAttr("#plier.fastmath", mlir::UnitAttr::get(&ctx));
+            func.setAttr(plier::attributes::fastmath, mlir::UnitAttr::get(&ctx));
         }
         lower_func_body(func_ir);
         mod.push_back(func);
