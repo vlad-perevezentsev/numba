@@ -244,11 +244,36 @@ private:
     llvm::DenseMap<mlir::Type, mlir::FuncOp> cache;
 };
 
+mlir::Attribute get_fastmath_attrs(mlir::MLIRContext& ctx)
+{
+    auto add_pair = [&](auto name, auto val)
+    {
+        const mlir::Attribute attrs[] = {
+            mlir::StringAttr::get(name, &ctx),
+            mlir::StringAttr::get(val, &ctx)
+        };
+        return mlir::ArrayAttr::get(attrs, &ctx);
+    };
+    const mlir::Attribute attrs[] = {
+        add_pair("denormal-fp-math", "preserve-sign,preserve-sign"),
+        add_pair("denormal-fp-math-f32", "ieee,ieee"),
+        add_pair("no-infs-fp-math", "true"),
+        add_pair("no-nans-fp-math", "true"),
+        add_pair("no-signed-zeros-fp-math", "true"),
+        add_pair("unsafe-fp-math", "true"),
+    };
+    return mlir::ArrayAttr::get(attrs, &ctx);
+}
+
 void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
     if (func.isPrivate())
     {
         return;
+    }
+    if (func.getAttr(plier::attributes::fastmath))
+    {
+        func.setAttr("passthrough", get_fastmath_attrs(*func.getContext()));
     }
     auto old_type = func.getType();
     assert(old_type.getNumResults() <= 1);
