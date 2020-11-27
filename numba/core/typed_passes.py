@@ -506,6 +506,7 @@ class MlirBackend(LoweringPass):
         ctx['restype'] = lambda: state.return_type
         ctx['fnname'] = lambda: fn_name
         ctx['resolve_func'] = self._resolve_func_name
+        ctx['fastmath'] = lambda: state.targetctx.fastmath
         import mlir_compiler
         mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)
         setattr(state, 'mlir_blob', mod)
