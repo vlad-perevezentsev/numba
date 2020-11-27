@@ -3,17 +3,6 @@
 #include <mlir/IR/Module.h>
 #include <mlir/IR/Attributes.h>
 
-mlir::ModuleOp get_module(mlir::Operation* op)
-{
-    assert(nullptr != op);
-    while (!mlir::isa<mlir::ModuleOp>(op))
-    {
-        op = op->getParentOp();
-        assert(nullptr != op);
-    }
-    return mlir::cast<mlir::ModuleOp>(op);
-}
-
 namespace
 {
 const constexpr llvm::StringLiteral jump_marker_name("#plier.pipeline_jump_markers");

@@ -136,7 +136,7 @@ void rerun_std_pipeline(mlir::Operation* op)
 {
     assert(nullptr != op);
     auto marker = mlir::StringAttr::get(plier_to_std_pipeline_name(), op->getContext());
-    add_pipeline_jump_marker(get_module(op), marker);
+    add_pipeline_jump_marker(op->getParentOfType<mlir::ModuleOp>(), marker);
 }
 
 mlir::LogicalResult numpy_rewrite(
