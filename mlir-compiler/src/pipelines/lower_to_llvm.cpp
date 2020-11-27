@@ -184,8 +184,6 @@ std::string gen_conversion_func_name(mlir::MemRefType memref_type)
     return ret;
 }
 
-const constexpr llvm::StringRef linkage_attr = "numba_linkage";
-
 struct MemRefConversionCache
 {
     mlir::FuncOp get_conversion_func(
@@ -207,7 +205,7 @@ struct MemRefConversionCache
         auto func_type = mlir::FunctionType::get(src_type, dst_type, builder.getContext());
         auto loc = builder.getUnknownLoc();
         auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
-        new_func.setAttr(linkage_attr, mlir::StringAttr::get("internal", builder.getContext()));
+        new_func.setPrivate();
         module.push_back(new_func);
         cache.insert({memref_type, new_func});
         mlir::OpBuilder::InsertionGuard guard(builder);
@@ -244,19 +242,9 @@ private:
     llvm::DenseMap<mlir::Type, mlir::FuncOp> cache;
 };
 
-llvm::StringRef get_linkage(mlir::Operation* op)
-{
-    assert(nullptr != op);
-    if (auto attr = op->getAttr(linkage_attr).dyn_cast_or_null<mlir::StringAttr>())
-    {
-        return attr.getValue();
-    }
-    return {};
-}
-
 void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
-    if (get_linkage(func) == "internal")
+    if (func.isPrivate())
     {
         return;
     }
@@ -420,7 +408,7 @@ class CheckForPlierTypes :
             if (llvm::any_of(op->getResultTypes(), check_type) ||
                 llvm::any_of(op->getOperandTypes(), check_type))
             {
-                op->emitOpError(": not all plier types were translated\n");
+                op->emitOpError(": plier types weren't translated\n");
                 signalPassFailure();
             }
         });
