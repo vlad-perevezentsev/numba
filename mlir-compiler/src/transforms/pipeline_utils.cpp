@@ -3,25 +3,11 @@
 #include <mlir/IR/Module.h>
 #include <mlir/IR/Attributes.h>
 
-mlir::ModuleOp get_module(mlir::Operation* op)
-{
-    assert(nullptr != op);
-    while (!mlir::isa<mlir::ModuleOp>(op))
-    {
-        op = op->getParentOp();
-        assert(nullptr != op);
-    }
-    return mlir::cast<mlir::ModuleOp>(op);
-}
-
-namespace
-{
-const constexpr llvm::StringLiteral jump_marker_name("#plier.pipeline_jump_markers");
-}
+#include "plier/dialect.hpp"
 
 mlir::ArrayAttr get_pipeline_jump_markers(mlir::ModuleOp module)
 {
-    return module.getAttrOfType<mlir::ArrayAttr>(jump_marker_name);
+    return module.getAttrOfType<mlir::ArrayAttr>(plier::attributes::jump_markers);
 }
 
 void add_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
@@ -29,8 +15,9 @@ void add_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     assert(name);
     assert(!name.getValue().empty());
 
+    auto jump_markers = plier::attributes::jump_markers;
     llvm::SmallVector<mlir::Attribute, 16> name_list;
-    if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_marker_name))
+    if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_markers))
     {
         name_list.assign(old_attr.begin(), old_attr.end());
     }
@@ -47,7 +34,7 @@ void add_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     {
         name_list.insert(it, name);
     }
-    module.setAttr(jump_marker_name, mlir::ArrayAttr::get(name_list, module.getContext()));
+    module.setAttr(jump_markers, mlir::ArrayAttr::get(name_list, module.getContext()));
 }
 
 
@@ -56,8 +43,9 @@ void remove_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     assert(name);
     assert(!name.getValue().empty());
 
+    auto jump_markers = plier::attributes::jump_markers;
     llvm::SmallVector<mlir::Attribute, 16> name_list;
-    if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_marker_name))
+    if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_markers))
     {
         name_list.assign(old_attr.begin(), old_attr.end());
     }
@@ -68,5 +56,5 @@ void remove_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     });
     assert(it != name_list.end());
     name_list.erase(it);
-    module.setAttr(jump_marker_name, mlir::ArrayAttr::get(name_list, module.getContext()));
+    module.setAttr(jump_markers, mlir::ArrayAttr::get(name_list, module.getContext()));
 }

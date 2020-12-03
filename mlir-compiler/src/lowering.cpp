@@ -141,6 +141,10 @@ struct plier_lowerer final
         auto name = compilation_context["fnname"]().cast<std::string>();
         auto typ = get_func_type(compilation_context["fnargs"], compilation_context["restype"]);
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
+        if (compilation_context["fastmath"]().cast<bool>())
+        {
+            func.setAttr(plier::attributes::fastmath, mlir::UnitAttr::get(&ctx));
+        }
         lower_func_body(func_ir);
         mod.push_back(func);
         return mod;

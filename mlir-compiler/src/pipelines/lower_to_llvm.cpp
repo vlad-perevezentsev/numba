@@ -184,8 +184,6 @@ std::string gen_conversion_func_name(mlir::MemRefType memref_type)
     return ret;
 }
 
-const constexpr llvm::StringRef linkage_attr = "numba_linkage";
-
 struct MemRefConversionCache
 {
     mlir::FuncOp get_conversion_func(
@@ -207,7 +205,9 @@ struct MemRefConversionCache
         auto func_type = mlir::FunctionType::get(src_type, dst_type, builder.getContext());
         auto loc = builder.getUnknownLoc();
         auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
-        new_func.setAttr(linkage_attr, mlir::StringAttr::get("internal", builder.getContext()));
+        new_func.setPrivate();
+        auto alwaysinline = mlir::StringAttr::get("alwaysinline", builder.getContext());
+        new_func.setAttr("passthrough", mlir::ArrayAttr::get(alwaysinline, builder.getContext()));
         module.push_back(new_func);
         cache.insert({memref_type, new_func});
         mlir::OpBuilder::InsertionGuard guard(builder);
@@ -244,21 +244,36 @@ private:
     llvm::DenseMap<mlir::Type, mlir::FuncOp> cache;
 };
 
-llvm::StringRef get_linkage(mlir::Operation* op)
+mlir::Attribute get_fastmath_attrs(mlir::MLIRContext& ctx)
 {
-    assert(nullptr != op);
-    if (auto attr = op->getAttr(linkage_attr).dyn_cast_or_null<mlir::StringAttr>())
+    auto add_pair = [&](auto name, auto val)
     {
-        return attr.getValue();
-    }
-    return {};
+        const mlir::Attribute attrs[] = {
+            mlir::StringAttr::get(name, &ctx),
+            mlir::StringAttr::get(val, &ctx)
+        };
+        return mlir::ArrayAttr::get(attrs, &ctx);
+    };
+    const mlir::Attribute attrs[] = {
+        add_pair("denormal-fp-math", "preserve-sign,preserve-sign"),
+        add_pair("denormal-fp-math-f32", "ieee,ieee"),
+        add_pair("no-infs-fp-math", "true"),
+        add_pair("no-nans-fp-math", "true"),
+        add_pair("no-signed-zeros-fp-math", "true"),
+        add_pair("unsafe-fp-math", "true"),
+    };
+    return mlir::ArrayAttr::get(attrs, &ctx);
 }
 
 void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
 {
-    if (get_linkage(func) == "internal")
+    if (func.isPrivate())
     {
         return;
+    }
+    if (func.getAttr(plier::attributes::fastmath))
+    {
+        func.setAttr("passthrough", get_fastmath_attrs(*func.getContext()));
     }
     auto old_type = func.getType();
     assert(old_type.getNumResults() <= 1);
@@ -420,7 +435,7 @@ class CheckForPlierTypes :
             if (llvm::any_of(op->getResultTypes(), check_type) ||
                 llvm::any_of(op->getOperandTypes(), check_type))
             {
-                op->emitOpError(": not all plier types were translated\n");
+                op->emitOpError(": plier types weren't translated\n");
                 signalPassFailure();
             }
         });
