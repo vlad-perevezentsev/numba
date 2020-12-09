@@ -11,7 +11,8 @@ from numba.core.errors import (LoweringError, new_error_context, TypingError,
 from numba.core.funcdesc import default_mangler
 from numba.core.environment import Environment
 
-_use_mlir = True
+import numba.mlir.settings
+_use_mlir = numba.mlir.settings.USE_MLIR
 
 _VarArgItem = namedtuple("_VarArgItem", ("vararg", "index"))
 

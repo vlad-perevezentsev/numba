@@ -467,6 +467,7 @@ class NoPythonBackend(LoweringPass):
         )
         return True
 
+import numba.mlir.settings
 
 @register_pass(mutates_CFG=True, analysis_only=False)
 class MlirBackend(LoweringPass):
@@ -500,7 +501,7 @@ class MlirBackend(LoweringPass):
             fn_name = fndesc.mangled_name
 
         ctx = {}
-        ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': False}
+        ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': numba.mlir.settings.PRINT_IR}
         ctx['typemap'] = lambda op: state.typemap[op.name]
         ctx['fnargs'] = lambda: state.args
         ctx['restype'] = lambda: state.return_type
