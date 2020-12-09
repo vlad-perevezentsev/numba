@@ -14,5 +14,5 @@ MLIR backend is not yet integrated into Numba build process
 
 # Useful env variables
 
-`NUMBA_MLIR_ENABLE=1` - enable/diasable MLIR backed (default - 1)
-`NUMBA_MLIR_PRINT_IR=1` - dump MLIR IR to stdout before and after each pass (default - 0)
+* `NUMBA_MLIR_ENABLE=1` - enable/diasable MLIR backed (default - 1)
+* `NUMBA_MLIR_PRINT_IR=1` - dump MLIR IR to stdout before and after each pass (default - 0)
