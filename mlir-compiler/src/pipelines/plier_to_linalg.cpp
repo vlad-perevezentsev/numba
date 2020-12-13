@@ -7,6 +7,8 @@
 #include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Dialect/Linalg/Transforms/Transforms.h>
 #include <mlir/Dialect/StandardOps/Transforms/Passes.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/Dialect/Tensor/Transforms/Passes.h>
 #include <mlir/Dialect/SCF/SCF.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Pass/Pass.h>
@@ -204,7 +206,7 @@ mlir::LogicalResult numpy_rewrite(
             llvm::makeArrayRef(iterators),
             body).getResult(0);
         mlir::Value index = rewriter.create<mlir::ConstantIndexOp>(loc, 0);
-        mlir::Value res = rewriter.create<mlir::ExtractElementOp>(loc, val, index);
+        mlir::Value res = rewriter.create<mlir::tensor::ExtractOp>(loc, val, index);
         rewriter.replaceOp(op, res);
         return mlir::success();
     }
@@ -255,7 +257,7 @@ struct GetitemOpLowering : public mlir::OpRewritePattern<T>
         }
         else if (is_tensor)
         {
-            res = rewriter.create<mlir::ExtractElementOp>(loc, val, index);
+            res = rewriter.create<mlir::tensor::ExtractOp>(loc, val, index);
         }
         else
         {
@@ -538,6 +540,7 @@ void populate_plier_to_linalg_opt_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(mlir::createLinalgFusionOfTensorOpsPass());
 
+    pm.addNestedPass<mlir::FuncOp>(mlir::createTensorBufferizePass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createStdBufferizePass());
     pm.addPass(mlir::createFuncBufferizePass());
