@@ -1,6 +1,6 @@
 #include "transforms/pipeline_utils.hpp"
 
-#include <mlir/IR/Module.h>
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Attributes.h>
 
 #include "plier/dialect.hpp"

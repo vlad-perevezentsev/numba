@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mlir/IR/Function.h>
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/PatternMatch.h>
 
 namespace mlir

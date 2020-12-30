@@ -26,7 +26,7 @@ def ArgOp : Plier_Op<"arg", [NoSideEffect]> {
     let hasFolder = 1;
 
     let builders = [
-        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, unsigned index, ::mlir::StringRef name">
+        OpBuilderDAG<(ins "unsigned":$index, "::mlir::StringRef":$name)>
     ];
 }
 
@@ -37,44 +37,44 @@ def ConstOp : Plier_Op<"const", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Attribute val">
+        OpBuilderDAG<(ins "::mlir::Attribute":$val)>
     ];
 }
 
 def GlobalOp : Plier_Op<"global", [NoSideEffect]> {
-  let arguments = (ins
-                   StrAttr:$name);
+    let arguments = (ins
+                     StrAttr:$name);
 
-  let results = (outs AnyType);
+    let results = (outs AnyType);
 
-  let builders = [
-      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::StringRef name">
-  ];
+    let builders = [
+        OpBuilderDAG<(ins "::mlir::StringRef":$name)>
+    ];
 }
 
 def BinOp : Plier_Op<"binop", []> {
-  let arguments = (ins
-                   AnyType:$rhs,
-                   AnyType:$lhs,
-                   StrAttr:$op);
+    let arguments = (ins
+                     AnyType:$rhs,
+                     AnyType:$lhs,
+                     StrAttr:$op);
 
-  let results = (outs AnyType);
+    let results = (outs AnyType);
 
-  let builders = [
-      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value rhs, ::mlir::Value lhs, ::mlir::StringRef op">
-  ];
+    let builders = [
+        OpBuilderDAG<(ins "::mlir::Value":$rhs, "::mlir::Value":$lhs, "::mlir::StringRef ":$op)>
+    ];
 }
 
 def UnaryOp : Plier_Op<"unary", []> {
-  let arguments = (ins
-                   AnyType:$value,
-                   StrAttr:$op);
+    let arguments = (ins
+                     AnyType:$value,
+                     StrAttr:$op);
 
-  let results = (outs AnyType);
+    let results = (outs AnyType);
 
-  let builders = [
-      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, ::mlir::StringRef op">
-  ];
+    let builders = [
+        OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::StringRef ":$op)>
+    ];
 }
 
 def CastOp : Plier_Op<"cast", []> {
@@ -86,20 +86,20 @@ def CastOp : Plier_Op<"cast", []> {
 }
 
 def PyCallOp : Plier_Op<"call", []> {
-  let arguments = (ins
-                   AnyType:$func,
-                   Variadic<AnyType>:$args,
-                   StrAttr:$func_name,
-                   UI32Attr:$kw_start,
-                   ArrayAttr:$kw_names);
+    let arguments = (ins
+                     AnyType:$func,
+                     Variadic<AnyType>:$args,
+                     StrAttr:$func_name,
+                     UI32Attr:$kw_start,
+                     ArrayAttr:$kw_names);
 
-  let results = (outs AnyType);
+    let results = (outs AnyType);
 
-  let builders = [
-      OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value func, "
-                "::mlir::StringRef func_name, ::mlir::ValueRange args, "
-                "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>> kwargs">
-  ];
+    let builders = [
+        OpBuilderDAG<(ins "::mlir::Value":$func, "::mlir::StringRef":$func_name,
+                      "::mlir::ValueRange":$args,
+                      "::mlir::ArrayRef<std::pair<std::string, ::mlir::Value>>":$kwargs)>
+    ];
 }
 
 def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
@@ -109,8 +109,8 @@ def BuildTupleOp : Plier_Op<"build_tuple", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::ValueRange args">
-];
+        OpBuilderDAG<(ins "::mlir::ValueRange":$args)>
+    ];
 }
 
 def GetItemOp : Plier_Op<"getitem", []> {
@@ -121,9 +121,8 @@ def GetItemOp : Plier_Op<"getitem", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, "
-               "::mlir::Value index">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::Value":$index)>
+    ];
 }
 
 def StaticGetItemOp : Plier_Op<"static_getitem", []> {
@@ -135,9 +134,8 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, "
-               "::mlir::Value index_var, unsigned index">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::Value":$index_var, "unsigned":$index)>
+    ];
 }
 
 def SetItemOp : Plier_Op<"setitem", []> {
@@ -156,8 +154,8 @@ def GetiterOp : Plier_Op<"getiter", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value)>
+    ];
 }
 
 def IternextOp : Plier_Op<"iternext", []> {
@@ -167,8 +165,8 @@ def IternextOp : Plier_Op<"iternext", []> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value)>
+    ];
 }
 
 def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
@@ -178,8 +176,8 @@ def PairfirstOp : Plier_Op<"pair_first", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value)>
+    ];
 }
 
 def PairsecondOp : Plier_Op<"pair_second", [NoSideEffect]> {
@@ -189,8 +187,8 @@ def PairsecondOp : Plier_Op<"pair_second", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-     OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value">
-];
+        OpBuilderDAG<(ins "::mlir::Value":$value)>
+    ];
 }
 
 def DelOp : Plier_Op<"del", []> {
@@ -206,7 +204,7 @@ def GetattrOp : Plier_Op<"getattr", [NoSideEffect]> {
     let results = (outs AnyType);
 
     let builders = [
-        OpBuilder<"::mlir::OpBuilder &b, ::mlir::OperationState &state, ::mlir::Value value, ::mlir::StringRef name">
+        OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::StringRef":$name)>
     ];
 }
 

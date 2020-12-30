@@ -1,7 +1,8 @@
 #include "plier/dialect.hpp"
 
 #include <mlir/IR/DialectImplementation.h>
-#include <mlir/IR/StandardTypes.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Builders.h>
 
 #include <mlir/Dialect/StandardOps/IR/Ops.h>

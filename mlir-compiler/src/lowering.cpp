@@ -7,9 +7,9 @@
 
 #include <pybind11/pybind11.h>
 
-#include <mlir/IR/Module.h>
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Builders.h>
-#include <mlir/IR/StandardTypes.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 
 #include <mlir/Target/LLVMIR.h>
@@ -491,7 +491,7 @@ private:
         auto c = loadvar(cond);
         auto tr_block = blocks_map.find(tr.cast<int>())->second;
         auto fl_block = blocks_map.find(fl.cast<int>())->second;
-        auto cond_val = builder.create<plier::CastOp>(get_current_loc(), mlir::IntegerType::get(1, &ctx), c);
+        auto cond_val = builder.create<plier::CastOp>(get_current_loc(), mlir::IntegerType::get(&ctx, 1), c);
         builder.create<mlir::CondBranchOp>(get_current_loc(), cond_val, tr_block, fl_block);
     }
 
@@ -530,7 +530,7 @@ private:
         {
             args.push_back(get_obj_type(arg));
         }
-        return mlir::FunctionType::get(args, {ret}, &ctx);
+        return mlir::FunctionType::get(&ctx, args, {ret});
     }
 
     mlir::Location get_current_loc()

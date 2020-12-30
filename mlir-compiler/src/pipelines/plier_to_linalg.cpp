@@ -169,7 +169,6 @@ mlir::LogicalResult numpy_rewrite(
             mlir::TypeRange(res_type),
             mlir::ValueRange(inputs),
             mlir::ValueRange(), // outputs
-            mlir::ValueRange(), // init
             llvm::makeArrayRef(map),
             llvm::makeArrayRef(iterators),
             body).getResult(0);
@@ -180,7 +179,7 @@ mlir::LogicalResult numpy_rewrite(
     {
         auto loc = op.getLoc();
         mlir::Value inputs[] = { args[0] };
-        auto elem_type = mlir::IntegerType::get(64, op.getContext());
+        auto elem_type = mlir::IntegerType::get(op.getContext(), 64);
         auto res_type = mlir::RankedTensorType::get(1, elem_type);
         mlir::Value zero = rewriter.create<mlir::ConstantOp>(loc, get_zero(elem_type));
         mlir::Value init = rewriter.create<mlir::TensorFromElementsOp>(loc, zero);
@@ -200,8 +199,7 @@ mlir::LogicalResult numpy_rewrite(
             loc,
             mlir::TypeRange(res_type),
             mlir::ValueRange(inputs),
-            mlir::ValueRange(), // outputs
-            mlir::ValueRange(init),
+            mlir::ValueRange(init), // outputs
             llvm::makeArrayRef(map),
             llvm::makeArrayRef(iterators),
             body).getResult(0);

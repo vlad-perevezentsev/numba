@@ -127,8 +127,8 @@ mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
 
     // Update the function signature in-place.
     rewriter.updateRootInPlace(funcOp, [&] {
-        funcOp.setType(mlir::FunctionType::get(result.getConvertedTypes(), newResults,
-                                               funcOp.getContext()));
+        funcOp.setType(mlir::FunctionType::get(
+            funcOp.getContext(), result.getConvertedTypes(), newResults));
         auto res = convertRegionTypes(&funcOp.getBody(), converter, true);
         assert(mlir::succeeded(res));
     });

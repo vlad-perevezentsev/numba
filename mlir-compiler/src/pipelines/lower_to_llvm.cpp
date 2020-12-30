@@ -96,8 +96,8 @@ mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::
 {
     assert(type);
     auto ctx = type.getContext();
-    auto i8p = mlir::LLVM::LLVMType::getInt8Ty(ctx).getPointerTo();
-    auto i64 = mlir::LLVM::LLVMType::getIntNTy(ctx, 64);
+    auto i8p = mlir::LLVM::LLVMPointerType::get(mlir::LLVM::LLVMIntegerType::get(ctx, 8));
+    auto i64 = mlir::LLVM::LLVMIntegerType::get(ctx, 64);
     auto data_type = converter.convertType(type.getElementType()).cast<mlir::LLVM::LLVMType>();
     assert(data_type);
     auto shape_type = mlir::LLVM::LLVMArrayType::get(i64, static_cast<unsigned>(type.getRank()));
@@ -106,7 +106,7 @@ mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::
         i8p, // 1, parent
         i64, // 2, nitems
         i64, // 3, itemsize
-        data_type.getPointerTo(), // 4, data
+        mlir::LLVM::LLVMPointerType::get(data_type), // 4, data
         shape_type, // 5, shape
         shape_type, // 6, strides
     };
@@ -202,7 +202,7 @@ struct MemRefConversionCache
             return func;
         }
         auto func_name = gen_conversion_func_name(memref_type);
-        auto func_type = mlir::FunctionType::get(src_type, dst_type, builder.getContext());
+        auto func_type = mlir::FunctionType::get(builder.getContext(),src_type, dst_type);
         auto loc = builder.getUnknownLoc();
         auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
         new_func.setPrivate();
@@ -344,8 +344,8 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
     {
         process_arg(arg);
     }
-    auto ret_type = mlir::IntegerType::get(32, &ctx);
-    func.setType(mlir::FunctionType::get(args, ret_type, &ctx));
+    auto ret_type = mlir::IntegerType::get(&ctx, 32);
+    func.setType(mlir::FunctionType::get(&ctx, args, ret_type));
 }
 
 struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
@@ -359,7 +359,7 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
         auto insert_ret = [&]()
         {
             auto ctx = op.getContext();
-            auto ret_type = mlir::IntegerType::get(32, ctx);
+            auto ret_type = mlir::IntegerType::get(ctx, 32);
             auto ll_ret_type = mlir::LLVM::LLVMIntegerType::get(ctx, 32);
             mlir::Value ret = rewriter.create<mlir::LLVM::ConstantOp>(op.getLoc(), ll_ret_type, mlir::IntegerAttr::get(ret_type, 0));
             rewriter.replaceOpWithNewOp<mlir::LLVM::ReturnOp>(op, ret);

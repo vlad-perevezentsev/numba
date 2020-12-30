@@ -31,7 +31,7 @@ mlir::Type map_int_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
     if (name.consume_front("int") &&
         !name.consumeInteger<unsigned>(10, num_bits))
     {
-        return mlir::IntegerType::get(num_bits, &ctx);
+        return mlir::IntegerType::get(&ctx, num_bits);
     }
     return nullptr;
 }
@@ -42,7 +42,7 @@ mlir::Type map_int_literal_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
     if (name.consume_front("Literal[int](") &&
         !name.consumeInteger<unsigned>(10, dummy) && name.consume_front(")"))
     {
-        return mlir::IntegerType::get(64, &ctx); // TODO
+        return mlir::IntegerType::get(&ctx, 64); // TODO
     }
     return nullptr;
 }
@@ -51,7 +51,7 @@ mlir::Type map_bool_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
 {
     if (name.consume_front("bool"))
     {
-        return mlir::IntegerType::get(1, &ctx);
+        return mlir::IntegerType::get(&ctx, 1);
     }
     return nullptr;
 }
@@ -94,7 +94,7 @@ mlir::Type map_pair_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
         map_type_helper(ctx, name, second) &&
         name.consume_front(">"))
     {
-        return mlir::TupleType::get({first, second}, &ctx);
+        return mlir::TupleType::get(&ctx, {first, second});
     }
     return nullptr;
 }
@@ -110,7 +110,7 @@ mlir::Type map_unituple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
         name.consume_front(")"))
     {
         llvm::SmallVector<mlir::Type, 8> types(count, type);
-        return mlir::TupleType::get(types, &ctx);
+        return mlir::TupleType::get(&ctx, types);
     }
     return nullptr;
 }
@@ -136,7 +136,7 @@ mlir::Type map_tuple_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
         types.push_back(type);
         (void)name.consume_front(", ");
     }
-    return mlir::TupleType::get(types, &ctx);
+    return mlir::TupleType::get(&ctx, types);
 }
 
 mlir::Type map_func_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
@@ -145,7 +145,7 @@ mlir::Type map_func_type(mlir::MLIRContext& ctx, llvm::StringRef& name)
         name.consume_front("<class 'bool'>") && // TODO unhardcode;
         name.consume_front(")"))
     {
-        return mlir::FunctionType::get({}, {}, &ctx);
+        return mlir::FunctionType::get(&ctx, {}, {});
     }
     return nullptr;
 }
@@ -476,8 +476,8 @@ template<typename T, uint64_t Pred>
 void replace_cmp_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type /*new_type*/, mlir::ValueRange operands)
 {
     assert(nullptr != op);
-    auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(64, op->getContext()), Pred);
-    mlir::Type new_type = mlir::IntegerType::get(1, op->getContext());
+    auto pred_attr = mlir::IntegerAttr::get(mlir::IntegerType::get(op->getContext(), 64), Pred);
+    mlir::Type new_type = mlir::IntegerType::get(op->getContext(), 1);
     rewriter.replaceOpWithNewOp<T>(op, new_type, pred_attr, operands[0], operands[1]);
 }
 
@@ -702,7 +702,7 @@ struct ScfIfRewrite : public mlir::OpRewritePattern<mlir::CondBranchOp>
             mlir::Value cond = op.condition();
             if (reverse)
             {
-                auto i1 = mlir::IntegerType::get(1, op.getContext());
+                auto i1 = mlir::IntegerType::get(op.getContext(), 1);
                 auto one = rewriter.create<mlir::ConstantOp>(loc, mlir::IntegerAttr::get(i1, 1));
                 cond = rewriter.create<mlir::XOrOp>(loc, cond, one);
             }
@@ -1091,7 +1091,7 @@ mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Val
         }
     };
     auto src_type = val.getType();
-    auto dst_type = mlir::IntegerType::get(1, op.getContext());
+    auto dst_type = mlir::IntegerType::get(op.getContext(), 1);
     mlir::TypeSwitch<mlir::Type>(src_type)
         .Case<mlir::IntegerType>([&](auto) { replace_op(do_cast(dst_type, val, rewriter)); });
     return mlir::success(success);
@@ -1130,7 +1130,7 @@ mlir::LogicalResult lower_math_func(
         valid_type(args[0].getType()))
     {
         auto is_float = ret_type.isa<mlir::Float32Type>();
-        auto func_type = mlir::FunctionType::get(args[0].getType(), ret_type, op.getContext());
+        auto func_type = mlir::FunctionType::get(op.getContext(), args[0].getType(), ret_type);
         auto module = op.getParentOfType<mlir::ModuleOp>();
         mlir::FuncOp func;
         if (is_float)
