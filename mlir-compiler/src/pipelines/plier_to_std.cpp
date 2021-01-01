@@ -899,7 +899,6 @@ struct ScfWhileRewrite : public mlir::OpRewritePattern<mlir::BranchOp>
                 auto new_op = builder.clone(op, mapper);
                 for (auto user : op.getUsers())
                 {
-                    user->isBeforeInBlock(user);
                     if (!is_inside_block(user, before_block))
                     {
                         for (auto it : llvm::zip(op.getResults(), new_op->getResults()))

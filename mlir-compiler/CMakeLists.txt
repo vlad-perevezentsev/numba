@@ -25,6 +25,7 @@ set(SOURCES_LIST
     src/pipelines/plier_to_linalg.cpp
     src/pipelines/plier_to_std.cpp
     src/rewrites/call_lowering.cpp
+    src/rewrites/canonicalize_reductions.cpp
     src/rewrites/cast_lowering.cpp
     src/rewrites/type_conversion.cpp
     src/transforms/loop_utils.cpp
@@ -44,6 +45,7 @@ set(HEADERS_LIST
     src/pipelines/plier_to_linalg.hpp
     src/pipelines/plier_to_std.hpp
     src/rewrites/call_lowering.hpp
+    src/rewrites/canonicalize_reductions.hpp
     src/rewrites/cast_lowering.hpp
     src/rewrites/type_conversion.hpp
     src/transforms/loop_utils.hpp

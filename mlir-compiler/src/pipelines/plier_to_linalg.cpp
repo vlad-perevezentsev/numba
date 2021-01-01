@@ -22,6 +22,7 @@
 #include "pipelines/plier_to_std.hpp"
 #include "transforms/pipeline_utils.hpp"
 #include "rewrites/call_lowering.hpp"
+#include "rewrites/canonicalize_reductions.hpp"
 #include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
 
@@ -529,6 +530,33 @@ void LowerLinalgPass::runOnOperation()
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
+struct PostLinalgOptPass :
+    public mlir::PassWrapper<PostLinalgOptPass, mlir::OperationPass<mlir::ModuleOp>>
+{
+    virtual void getDependentDialects(
+        mlir::DialectRegistry &registry) const override
+    {
+        registry.insert<mlir::StandardOpsDialect>();
+        registry.insert<mlir::linalg::LinalgDialect>();
+        registry.insert<mlir::scf::SCFDialect>();
+        registry.insert<mlir::AffineDialect>();
+    }
+
+    void runOnOperation() override;
+};
+
+void PostLinalgOptPass::runOnOperation()
+{
+    mlir::OwningRewritePatternList patterns;
+
+    patterns.insert<
+        CanonicalizeReduction
+        >(&getContext());
+
+
+    (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+}
+
 void populate_plier_to_linalg_gen_pipeline(mlir::OpPassManager& pm)
 {
     pm.addPass(std::make_unique<PlierToLinalgPass>());
@@ -550,6 +578,7 @@ void populate_plier_to_linalg_opt_pipeline(mlir::OpPassManager& pm)
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
 
     pm.addPass(std::make_unique<LowerLinalgPass>());
+    pm.addPass(std::make_unique<PostLinalgOptPass>());
 }
 }
 
