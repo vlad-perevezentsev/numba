@@ -14,6 +14,7 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/LoopUtils.h>
 #include <mlir/Transforms/Passes.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -546,12 +547,35 @@ struct PostLinalgOptPass :
     void runOnOperation() override;
 };
 
+struct LoopInvariantCodeMotion : public mlir::OpRewritePattern<mlir::scf::ForOp>
+{
+    using mlir::OpRewritePattern<mlir::scf::ForOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        mlir::scf::ForOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto parentOp = op->getParentOp();
+        rewriter.startRootUpdate(parentOp);
+        auto res = mlir::moveLoopInvariantCode(op);
+        if (mlir::succeeded(res))
+        {
+            rewriter.finalizeRootUpdate(parentOp);
+        }
+        else
+        {
+            rewriter.cancelRootUpdate(parentOp);
+        }
+        return res;
+    }
+};
+
 void PostLinalgOptPass::runOnOperation()
 {
     mlir::OwningRewritePatternList patterns;
 
     patterns.insert<
         CanonicalizeReduction,
+        LoopInvariantCodeMotion,
         PromoteToParallel
         >(&getContext());
 

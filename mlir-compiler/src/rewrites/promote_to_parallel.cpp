@@ -73,7 +73,7 @@ mlir::LogicalResult PromoteToParallel::matchAndRewrite(mlir::scf::ForOp op, mlir
             for (auto operand : next_op->getOperands())
             {
                 if (operand.getDefiningOp() != reduce_op &&
-                        operand.getParentBlock() == &old_body)
+                    operand.getParentBlock() == &old_body)
                 {
                     return mlir::failure();
                 }
