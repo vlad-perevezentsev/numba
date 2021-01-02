@@ -11,6 +11,21 @@
 namespace plier
 {
 
+llvm::StringRef attributes::getFastmathName()
+{
+    return "#plier.fastmath";
+}
+
+llvm::StringRef attributes::getJumpMarkersName()
+{
+    return "#plier.pipeline_jump_markers";
+}
+
+llvm::StringRef attributes::getParallelName()
+{
+    return "#plier.parallel";
+}
+
 namespace detail
 {
 struct PyTypeStorage : public mlir::TypeStorage

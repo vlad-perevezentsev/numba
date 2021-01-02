@@ -4,6 +4,8 @@
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 #include <mlir/IR/BlockAndValueMapping.h>
 
+#include "plier/dialect.hpp"
+
 namespace
 {
 bool hasMemWrites(mlir::Operation *op)
@@ -28,7 +30,8 @@ bool hasMemWrites(mlir::Operation *op)
 
 mlir::LogicalResult PromoteToParallel::matchAndRewrite(mlir::scf::ForOp op, mlir::PatternRewriter& rewriter) const
 {
-    if (hasMemWrites(op))
+    auto has_parallel_attr = op->hasAttr(plier::attributes::getParallelName());
+    if (!has_parallel_attr && hasMemWrites(op))
     {
         return mlir::failure();
     }

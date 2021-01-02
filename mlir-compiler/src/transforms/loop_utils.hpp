@@ -10,6 +10,10 @@ class Value;
 class Location;
 class OpBuilder;
 class Type;
+namespace scf
+{
+class ForOp;
+}
 }
 
 namespace plier
@@ -17,7 +21,7 @@ namespace plier
 class GetiterOp;
 }
 
-mlir::LogicalResult lower_while_to_for(
-    plier::GetiterOp getiter, mlir::PatternRewriter& builder,
+mlir::LogicalResult lower_while_to_for(plier::GetiterOp getiter, mlir::PatternRewriter& builder,
     llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds,
-    llvm::function_ref<mlir::Value(mlir::OpBuilder&, mlir::Location, mlir::Type, mlir::Value)> get_iter_val);
+    llvm::function_ref<mlir::Value(mlir::OpBuilder&, mlir::Location, mlir::Type, mlir::Value)> get_iter_val,
+    llvm::function_ref<void(mlir::scf::ForOp)> results = nullptr);

@@ -1044,7 +1044,7 @@ mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> 
     {
         return mlir::failure();
     }
-    mlir::Value val(op);
+    mlir::Value val = op.getResult();
     if (!val.getUsers().empty())
     {
         auto user = mlir::dyn_cast<plier::GetiterOp>(*val.getUsers().begin());
@@ -1059,7 +1059,7 @@ mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> 
         {
             return builder.create<plier::CastOp>(loc, dst_type, index);
         };
-        if (!user || mlir::failed(lower_while_to_for(user,rewriter, get_bounds, get_index)))
+        if (!user || mlir::failed(lower_while_to_for(user, rewriter, get_bounds, get_index)))
         {
             return mlir::failure();
         }

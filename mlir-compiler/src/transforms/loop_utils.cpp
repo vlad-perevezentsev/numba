@@ -42,7 +42,8 @@ mlir::Value get_last_iter_value(
 mlir::LogicalResult lower_while_to_for(
     plier::GetiterOp getiter, mlir::PatternRewriter& builder,
     llvm::function_ref<std::tuple<mlir::Value,mlir::Value,mlir::Value>(mlir::OpBuilder&, mlir::Location)> get_bounds,
-    llvm::function_ref<mlir::Value(mlir::OpBuilder&, mlir::Location, mlir::Type, mlir::Value)> get_iter_val)
+    llvm::function_ref<mlir::Value(mlir::OpBuilder&, mlir::Location, mlir::Type, mlir::Value)> get_iter_val,
+    llvm::function_ref<void(mlir::scf::ForOp)> results)
 {
     llvm::SmallVector<mlir::scf::WhileOp, 4> to_process;
     for (auto user : getiter.getOperation()->getUsers())
@@ -165,6 +166,11 @@ mlir::LogicalResult lower_while_to_for(
         assert(while_op.getOperation()->getUsers().empty());
         builder.eraseOp(while_op);
         changed = true;
+
+        if (results)
+        {
+            results(loop_op);
+        }
     }
 
     if (getiter.getOperation()->getUsers().empty())

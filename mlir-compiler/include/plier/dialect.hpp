@@ -14,8 +14,9 @@ namespace plier
 {
 namespace attributes
 {
-const constexpr llvm::StringLiteral fastmath("#plier.fastmath");
-const constexpr llvm::StringLiteral jump_markers("#plier.pipeline_jump_markers");
+llvm::StringRef getFastmathName();
+llvm::StringRef getJumpMarkersName();
+llvm::StringRef getParallelName();
 }
 
 namespace detail

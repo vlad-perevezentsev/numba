@@ -271,7 +271,7 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
     {
         return;
     }
-    if (func.getAttr(plier::attributes::fastmath))
+    if (func.getAttr(plier::attributes::getFastmathName()))
     {
         func.setAttr("passthrough", get_fastmath_attrs(*func.getContext()));
     }

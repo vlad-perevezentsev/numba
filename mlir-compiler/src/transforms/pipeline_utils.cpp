@@ -7,7 +7,7 @@
 
 mlir::ArrayAttr get_pipeline_jump_markers(mlir::ModuleOp module)
 {
-    return module.getAttrOfType<mlir::ArrayAttr>(plier::attributes::jump_markers);
+    return module.getAttrOfType<mlir::ArrayAttr>(plier::attributes::getJumpMarkersName());
 }
 
 void add_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
@@ -15,7 +15,7 @@ void add_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     assert(name);
     assert(!name.getValue().empty());
 
-    auto jump_markers = plier::attributes::jump_markers;
+    auto jump_markers = plier::attributes::getJumpMarkersName();
     llvm::SmallVector<mlir::Attribute, 16> name_list;
     if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_markers))
     {
@@ -43,7 +43,7 @@ void remove_pipeline_jump_marker(mlir::ModuleOp module, mlir::StringAttr name)
     assert(name);
     assert(!name.getValue().empty());
 
-    auto jump_markers = plier::attributes::jump_markers;
+    auto jump_markers = plier::attributes::getJumpMarkersName();
     llvm::SmallVector<mlir::Attribute, 16> name_list;
     if (auto old_attr = module.getAttrOfType<mlir::ArrayAttr>(jump_markers))
     {

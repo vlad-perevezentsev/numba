@@ -27,6 +27,7 @@
 #include "rewrites/cast_lowering.hpp"
 #include "rewrites/promote_to_parallel.hpp"
 #include "rewrites/type_conversion.hpp"
+#include "transforms/loop_utils.hpp"
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
@@ -141,13 +142,73 @@ void rerun_std_pipeline(mlir::Operation* op)
 {
     assert(nullptr != op);
     auto marker = mlir::StringAttr::get(plier_to_std_pipeline_name(), op->getContext());
-    add_pipeline_jump_marker(op->getParentOfType<mlir::ModuleOp>(), marker);
+    auto mod = op->getParentOfType<mlir::ModuleOp>();
+    assert(nullptr != mod);
+    add_pipeline_jump_marker(mod, marker);
 }
 
-mlir::LogicalResult numpy_rewrite(
+bool is_int(mlir::Type type)
+{
+    assert(type);
+    return type.isa<mlir::IntegerType>();
+}
+
+mlir::LogicalResult lower_prange(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
+{
+    if ((operands.size() < 1 || operands.size() > 3) ||
+        !llvm::all_of(operands, [](mlir::Value val) { return is_int(val.getType());}))
+    {
+        return mlir::failure();
+    }
+    mlir::Value val = op.getResult();
+    if (!val.getUsers().empty())
+    {
+        auto user = mlir::dyn_cast<plier::GetiterOp>(*val.getUsers().begin());
+        auto get_bounds = [&](mlir::OpBuilder& builder, mlir::Location loc)
+        {
+            auto lower_bound = (operands.size() >= 2 ? operands[0] : builder.create<mlir::ConstantIndexOp>(loc, 0));
+            auto upper_bound = (operands.size() >= 2 ? operands[1] : operands[0]);
+            auto step = (operands.size() == 3 ? operands[2] : builder.create<mlir::ConstantIndexOp>(loc, 1));
+            return std::make_tuple(lower_bound, upper_bound, step);
+        };
+        auto get_index = [](mlir::OpBuilder& builder, mlir::Location loc, mlir::Type dst_type, mlir::Value index)
+        {
+            return builder.create<plier::CastOp>(loc, dst_type, index);
+        };
+        auto set_attr = [](mlir::scf::ForOp op)
+        {
+            op->setAttr(plier::attributes::getParallelName(), mlir::UnitAttr::get(op->getContext()));
+        };
+        if (!user || mlir::failed(lower_while_to_for(user, rewriter, get_bounds, get_index, set_attr)))
+        {
+            return mlir::failure();
+        }
+    }
+
+    rerun_std_pipeline(op);
+    if (val.getUsers().empty())
+    {
+        rewriter.eraseOp(op);
+    }
+    return mlir::success();
+}
+
+mlir::LogicalResult call_rewrite(
     plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
     mlir::PatternRewriter& rewriter)
 {
+    using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
+    std::pair<llvm::StringRef, func_t> handlers[] = {
+        {"numba.prange", lower_prange},
+    };
+    for (auto& handler : handlers)
+    {
+        if (handler.first == name)
+        {
+            return handler.second(op, args, rewriter);
+        }
+    }
+
     if (name == "numpy.add" && check_numpy_args(args, 2))
     {
         auto loc = op.getLoc();
@@ -493,7 +554,7 @@ void PlierToLinalgPass::runOnOperation()
 
     patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), &numpy_rewrite);
+        >(type_converter, &getContext(), &call_rewrite);
 
     patterns.insert<
         GetitemOpLowering<plier::GetItemOp>,
@@ -575,7 +636,7 @@ void PostLinalgOptPass::runOnOperation()
 
     patterns.insert<
         CanonicalizeReduction,
-        LoopInvariantCodeMotion,
+//        LoopInvariantCodeMotion, TODO
         PromoteToParallel
         >(&getContext());
 
