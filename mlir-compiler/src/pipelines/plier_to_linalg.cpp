@@ -24,6 +24,7 @@
 #include "rewrites/call_lowering.hpp"
 #include "rewrites/canonicalize_reductions.hpp"
 #include "rewrites/cast_lowering.hpp"
+#include "rewrites/promote_to_parallel.hpp"
 #include "rewrites/type_conversion.hpp"
 
 #include "base_pipeline.hpp"
@@ -550,7 +551,8 @@ void PostLinalgOptPass::runOnOperation()
     mlir::OwningRewritePatternList patterns;
 
     patterns.insert<
-        CanonicalizeReduction
+        CanonicalizeReduction,
+        PromoteToParallel
         >(&getContext());
 
 
