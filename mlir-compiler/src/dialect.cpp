@@ -6,6 +6,7 @@
 #include <mlir/IR/Builders.h>
 
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
+
 #include <llvm/ADT/TypeSwitch.h>
 
 namespace plier
@@ -25,6 +26,12 @@ llvm::StringRef attributes::getParallelName()
 {
     return "#plier.parallel";
 }
+
+llvm::StringRef attributes::getMaxConcurrencyName()
+{
+        return "#plier.max_concurrency";
+}
+
 
 namespace detail
 {
@@ -264,6 +271,45 @@ void GetattrOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                       mlir::Value value, mlir::StringRef name) {
     GetattrOp::build(builder, state, PyType::getUndefined(state.getContext()),
                      value, name);
+}
+
+mlir::LogicalResult ParallelOp::moveOutOfLoop(mlir::ArrayRef<mlir::Operation *> ops)
+{
+    for (mlir::Operation *op : ops)
+    {
+        op->moveBefore(*this);
+    }
+    return mlir::success();
+}
+
+mlir::Region &ParallelOp::getLoopBody() { return region(); }
+
+bool ParallelOp::isDefinedOutsideOfLoop(mlir::Value value)
+{
+  return !region().isAncestor(value.getParentRegion());
+}
+
+void ParallelOp::build(
+    mlir::OpBuilder &odsBuilder, mlir::OperationState &odsState,
+    mlir::Value lowerBound, mlir::Value upperBound, mlir::Value step,
+    mlir::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::Value,
+                            mlir::Value, mlir::Value)> bodyBuilder) {
+    odsState.addOperands({lowerBound, upperBound, step});
+    auto bodyRegion = odsState.addRegion();
+    bodyRegion->push_back(new mlir::Block);
+    auto& bodyBlock = bodyRegion->front();
+    bodyBlock.addArgument(odsBuilder.getIndexType()); // lower bound
+    bodyBlock.addArgument(odsBuilder.getIndexType()); // upper bound
+    bodyBlock.addArgument(odsBuilder.getIndexType()); // thread index
+
+    if (bodyBuilder)
+    {
+        mlir::OpBuilder::InsertionGuard guard(odsBuilder);
+        odsBuilder.setInsertionPointToStart(&bodyBlock);
+        bodyBuilder(odsBuilder, odsState.location, bodyBlock.getArgument(0),
+                    bodyBlock.getArgument(1), bodyBlock.getArgument(2));
+        ParallelOp::ensureTerminator(*bodyRegion, odsBuilder, odsState.location);
+    }
 }
 
 }

@@ -1,6 +1,7 @@
 #include "pipelines/lower_to_llvm.hpp"
 
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/BlockAndValueMapping.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h>
 #include <mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h>
@@ -356,6 +357,12 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
     mlir::LogicalResult matchAndRewrite(mlir::ReturnOp op,
                                         mlir::PatternRewriter& rewriter) const
     {
+        auto parent = op->getParentOfType<mlir::FuncOp>();
+        if (nullptr == parent || parent.isPrivate())
+        {
+            return mlir::failure();
+        }
+
         auto insert_ret = [&]()
         {
             auto ctx = op.getContext();
@@ -460,6 +467,258 @@ public:
   mlir::LLVM::LLVMFuncOp getFunction() { return this->getOperation(); }
 };
 
+struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
+{
+    LowerParallel(mlir::MLIRContext* context):
+        OpRewritePattern(context),
+        converter(context) {}
+
+    mlir::LogicalResult
+    matchAndRewrite(plier::ParallelOp op,
+                    mlir::PatternRewriter &rewriter) const override {
+        llvm::SmallVector<mlir::Value, 8> context_vars;
+        llvm::SmallVector<mlir::Operation*, 8> context_constants;
+        llvm::DenseSet<mlir::Value> context_vars_set;
+        auto add_context_var = [&](mlir::Value value)
+        {
+            if (0 != context_vars_set.count(value))
+            {
+                return;
+            }
+            context_vars_set.insert(value);
+            if (auto op = value.getDefiningOp())
+            {
+                mlir::ConstantOp a;
+                if (op->hasTrait<mlir::OpTrait::ConstantLike>())
+                {
+                    context_constants.emplace_back(op);
+                    return;
+                }
+            }
+            context_vars.emplace_back(value);
+        };
+
+        auto is_defined_inside = [&](mlir::Value value)
+        {
+            auto& this_region = op.getLoopBody();
+            auto op_region = value.getParentRegion();
+            assert(nullptr != op_region);
+            do
+            {
+                if (op_region == &this_region)
+                {
+                    return true;
+                }
+                op_region = op_region->getParentRegion();
+            }
+            while (nullptr != op_region);
+            return false;
+        };
+
+        if (op->walk([&](mlir::Operation* inner)->mlir::WalkResult
+        {
+            if (op != inner)
+            {
+                for (auto arg : inner->getOperands())
+                {
+                    if (!is_defined_inside(arg))
+                    {
+                        add_context_var(arg);
+                    }
+                }
+            }
+            return mlir::WalkResult::advance();
+        }).wasInterrupted())
+        {
+            return mlir::failure();
+        }
+
+        auto context_type = [&]()->mlir::LLVM::LLVMStructType
+        {
+            llvm::SmallVector<mlir::LLVM::LLVMType, 8> fields;
+            fields.reserve(context_vars.size());
+            for (auto var : context_vars)
+            {
+                auto type = converter.convertType(var.getType());
+                if (!type)
+                {
+                    return {};
+                }
+                fields.emplace_back(type.cast<mlir::LLVM::LLVMType>());
+            }
+            return mlir::LLVM::LLVMStructType::getLiteral(op.getContext(), fields);
+        }();
+
+        if (!context_type)
+        {
+            return mlir::failure();
+        }
+        auto context_ptr_type = mlir::LLVM::LLVMPointerType::get(context_type);
+
+        auto loc = op.getLoc();
+        auto llvm_i32_type = mlir::LLVM::LLVMIntegerType::get(op.getContext(), 32);
+        auto zero = rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(0));
+        auto one = rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(1));
+        auto context = rewriter.create<mlir::LLVM::AllocaOp>(loc, context_ptr_type, one, 0);
+        for (auto it : llvm::enumerate(context_vars))
+        {
+            auto type = context_type.getBody()[it.index()];
+            auto llvm_val = rewriter.create<plier::CastOp>(loc, type, it.value());
+            auto i = rewriter.getI32IntegerAttr(static_cast<int32_t>(it.index()));
+            mlir::Value indices[] = {
+                zero,
+                rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, i)
+            };
+            auto pointer_type = mlir::LLVM::LLVMPointerType::get(type);
+            auto ptr = rewriter.create<mlir::LLVM::GEPOp>(loc, pointer_type, context, indices);
+            rewriter.create<mlir::LLVM::StoreOp>(loc, llvm_val, ptr);
+        }
+        auto void_ptr_type = mlir::LLVM::LLVMPointerType::get(mlir::LLVM::LLVMIntegerType::get(op.getContext(), 8));
+        auto context_abstract = rewriter.create<mlir::LLVM::BitcastOp>(loc, void_ptr_type, context);
+
+        auto index_type = rewriter.getIndexType();
+        auto func_type = [&]()
+        {
+            mlir::Type args[] = {
+                index_type, // lower_bound
+                index_type, // upper_bound
+                index_type, // thread index
+                void_ptr_type // context
+            };
+            return mlir::FunctionType::get(op.getContext(), args, {});
+        }();
+
+        auto mod = op.getParentOfType<mlir::ModuleOp>();
+        auto outlined_func = [&]()->mlir::FuncOp
+        {
+            auto func = [&]()
+            {
+                auto func_name = [&]()
+                {
+                    auto old_name = op.getParentOfType<mlir::FuncOp>().getName();
+                    for (int i = 0;;++i)
+                    {
+                        auto name = (0 == i ?
+                            (llvm::Twine(old_name) + "_outlined").str() :
+                            (llvm::Twine(old_name) + "_outlined_" + llvm::Twine(i)).str());
+                        if (!mod.lookupSymbol<mlir::FuncOp>(name))
+                        {
+                            return name;
+                        }
+                    }
+                }();
+
+                mlir::OpBuilder::InsertionGuard guard(rewriter);
+                // Insert before module terminator.
+                rewriter.setInsertionPoint(mod.getBody(),
+                                           std::prev(mod.getBody()->end()));
+                auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), func_name, func_type);
+                func.setPrivate();
+                return func;
+            }();
+            mlir::BlockAndValueMapping mapping;
+            auto& old_entry = op.getLoopBody().front();
+            auto entry = func.addEntryBlock();
+            auto loc = rewriter.getUnknownLoc();
+            mlir::OpBuilder::InsertionGuard guard(rewriter);
+            mapping.map(old_entry.getArgument(0), entry->getArgument(0));
+            mapping.map(old_entry.getArgument(1), entry->getArgument(1));
+            mapping.map(old_entry.getArgument(2), entry->getArgument(2));
+            rewriter.setInsertionPointToStart(entry);
+            for (auto arg : context_constants)
+            {
+                rewriter.clone(*arg, mapping);
+            }
+            auto context_ptr = rewriter.create<mlir::LLVM::BitcastOp>(loc, context_ptr_type, entry->getArgument(3));
+            auto zero = rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(0));
+            for (auto it : llvm::enumerate(context_vars))
+            {
+                auto index = it.index();
+                auto old_val = it.value();
+                mlir::Value indices[] = {
+                    zero,
+                    rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(static_cast<int32_t>(index)))
+                };
+                auto pointer_type = mlir::LLVM::LLVMPointerType::get(context_type.getBody()[index]);
+                auto ptr = rewriter.create<mlir::LLVM::GEPOp>(loc, pointer_type, context_ptr, indices);
+                auto llvm_val = rewriter.create<mlir::LLVM::LoadOp>(loc, ptr);
+                auto val = rewriter.create<plier::CastOp>(loc, old_val.getType(), llvm_val);
+                mapping.map(old_val, val);
+            }
+            op.getLoopBody().cloneInto(&func.getBody(), mapping);
+            auto& orig_entry = *std::next(func.getBody().begin());
+            rewriter.create<mlir::BranchOp>(loc, &orig_entry);
+            for (auto& block : func.getBody())
+            {
+                if (auto term = mlir::dyn_cast<plier::YieldOp>(block.getTerminator()))
+                {
+                    rewriter.eraseOp(term);
+                    rewriter.setInsertionPointToEnd(&block);
+                    rewriter.create<mlir::ReturnOp>(loc);
+                }
+            }
+            return func;
+        }();
+
+        auto parallel_for = [&]()
+        {
+            auto func_name = "numba_parallel_for2";
+            if (auto sym = mod.lookupSymbol<mlir::FuncOp>(func_name))
+            {
+                return sym;
+            }
+            mlir::Type args[] = {
+                index_type, // lower bound
+                index_type, // upper bound
+                index_type, // step
+                func_type,
+                void_ptr_type
+            };
+            auto func_type = mlir::FunctionType::get(op.getContext(), args, {});
+            mlir::OpBuilder::InsertionGuard guard(rewriter);
+            // Insert before module terminator.
+            rewriter.setInsertionPoint(mod.getBody(),
+                                       std::prev(mod.getBody()->end()));
+            auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), func_name, func_type);
+            func.setPrivate();
+            return func;
+        }();
+        auto func_addr = rewriter.create<mlir::ConstantOp>(loc, func_type, rewriter.getSymbolRefAttr(outlined_func));
+        mlir::Value pf_args[] = {
+            op.lowerBound(),
+            op.upperBound(),
+            op.step(),
+            func_addr,
+            context_abstract
+        };
+        rewriter.create<mlir::CallOp>(loc, parallel_for, pf_args);
+        rewriter.eraseOp(op);
+        return mlir::success();
+    }
+
+private:
+    mutable mlir::LLVMTypeConverter converter; // TODO
+};
+
+struct LowerParallelToCFGPass :
+    public mlir::PassWrapper<LowerParallelToCFGPass, mlir::OperationPass<void>>
+{
+    virtual void getDependentDialects(
+        mlir::DialectRegistry &registry) const override
+    {
+        registry.insert<mlir::StandardOpsDialect>();
+        registry.insert<mlir::LLVM::LLVMDialect>();
+    }
+
+    void runOnOperation() override final
+    {
+        mlir::OwningRewritePatternList patterns;
+        patterns.insert<LowerParallel>(&getContext());
+
+        mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    }
+};
+
 struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::FunctionPass>
 {
     virtual void getDependentDialects(
@@ -480,7 +739,7 @@ struct PreLLVMLowering : public mlir::PassWrapper<PreLLVMLowering, mlir::Functio
         patterns.insert<ReturnOpLowering>(&getContext(),
                                           type_helper.get_type_converter());
 
-        (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+        mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
     }
 };
 
@@ -569,8 +828,9 @@ private:
 
 void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 {
+    pm.addPass(std::make_unique<LowerParallelToCFGPass>());
     pm.addPass(mlir::createLowerToCFGPass());
-    pm.addPass(std::make_unique<CheckForPlierTypes>());
+//    pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addNestedPass<mlir::FuncOp>(std::make_unique<PreLLVMLowering>());
     pm.addPass(std::make_unique<LLVMLoweringPass>(getLLVMOptions()));
     pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(std::make_unique<PostLLVMLowering>());

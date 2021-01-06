@@ -497,6 +497,7 @@ def _launch_threads():
                 raise_with_hint(requirements)
 
             ll.add_symbol('numba_parallel_for', lib.parallel_for)
+            ll.add_symbol('numba_parallel_for2', lib.parallel_for2)
             ll.add_symbol('do_scheduling_signed', lib.do_scheduling_signed)
             ll.add_symbol('do_scheduling_unsigned', lib.do_scheduling_unsigned)
 

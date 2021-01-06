@@ -23,6 +23,7 @@
 #include "utils.hpp"
 
 #include "pipelines/base_pipeline.hpp"
+#include "pipelines/parallel_to_tbb.hpp"
 #include "pipelines/plier_to_std.hpp"
 #include "pipelines/plier_to_linalg.hpp"
 #include "pipelines/lower_to_llvm.hpp"
@@ -145,6 +146,8 @@ struct plier_lowerer final
         {
             func.setAttr(plier::attributes::getFastmathName(), mlir::UnitAttr::get(&ctx));
         }
+        auto max_concurrency = builder.getI64IntegerAttr(compilation_context["max_concurrency"]().cast<int>());
+        mod.setAttr(plier::attributes::getMaxConcurrencyName(), max_concurrency);
         lower_func_body(func_ir);
         mod.push_back(func);
         return mod;
@@ -645,6 +648,7 @@ void create_pipeline(PipelineRegistry& registry)
     register_lower_to_llvm_pipeline(registry);
     register_plier_to_std_pipeline(registry);
     register_plier_to_linalg_pipeline(registry);
+    register_parallel_to_tbb_pipeline(registry);
 }
 }
 

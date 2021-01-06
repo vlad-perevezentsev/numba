@@ -500,6 +500,7 @@ class MlirBackend(LoweringPass):
                     noalias=flags.noalias)
             fn_name = fndesc.mangled_name
 
+        from numba.np.ufunc.parallel import get_thread_count
         ctx = {}
         ctx['compiler_settings'] = {'verify': True, 'pass_statistics': False, 'pass_timings': False, 'ir_printing': numba.mlir.settings.PRINT_IR}
         ctx['typemap'] = lambda op: state.typemap[op.name]
@@ -508,9 +509,12 @@ class MlirBackend(LoweringPass):
         ctx['fnname'] = lambda: fn_name
         ctx['resolve_func'] = self._resolve_func_name
         ctx['fastmath'] = lambda: state.targetctx.fastmath
+        ctx['max_concurrency'] = lambda: get_thread_count() if state.flags.auto_parallel.enabled else 0
         import mlir_compiler
         mod = mlir_compiler.lower_normal_function(ctx, state.func_ir)
         setattr(state, 'mlir_blob', mod)
+        _reload_parfors()
+        state.reload_init.append(_reload_parfors)
         return True
 
     def _resolve_func_name(self, obj):

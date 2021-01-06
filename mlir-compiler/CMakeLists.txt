@@ -22,6 +22,7 @@ add_subdirectory(include/plier)
 set(SOURCES_LIST
     src/pipelines/base_pipeline.cpp
     src/pipelines/lower_to_llvm.cpp
+    src/pipelines/parallel_to_tbb.cpp
     src/pipelines/plier_to_linalg.cpp
     src/pipelines/plier_to_std.cpp
     src/rewrites/call_lowering.cpp
@@ -43,6 +44,7 @@ set(HEADERS_LIST
     include/plier/PlierOps.td
     src/pipelines/base_pipeline.hpp
     src/pipelines/lower_to_llvm.hpp
+    src/pipelines/parallel_to_tbb.hpp
     src/pipelines/plier_to_linalg.hpp
     src/pipelines/plier_to_std.hpp
     src/rewrites/call_lowering.hpp

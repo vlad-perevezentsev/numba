@@ -2,6 +2,8 @@
 #define PLIER_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def Plier_Dialect : Dialect {
@@ -206,6 +208,33 @@ def GetattrOp : Plier_Op<"getattr", [NoSideEffect]> {
     let builders = [
         OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::StringRef":$name)>
     ];
+}
+
+def ParallelOp : Plier_Op<"parallel",
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"plier::YieldOp">,
+       RecursiveSideEffects]> {
+
+    let arguments = (ins Index:$lowerBound,
+                     Index:$upperBound,
+                     Index:$step);
+    let regions = (region SizedRegion<1>:$region);
+
+    let skipDefaultBuilders = 1;
+    let builders = [
+        OpBuilderDAG<(ins "::mlir::Value":$lowerBound, "::mlir::Value":$upperBound, "::mlir::Value":$step,
+            CArg<"::mlir::function_ref<void(::mlir::OpBuilder &, ::mlir::Location, ::mlir::Value, ::mlir::Value, ::mlir::Value)>",
+                 "nullptr">)>
+    ];
+}
+
+def YieldOp : Plier_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+                                 ParentOneOf<["ParallelOp"]>]> {
+    let arguments = (ins Variadic<AnyType>:$results);
+    let builders = [OpBuilderDAG<(ins), [{ /* nothing to do */ }]>];
+    // Override default verifier (defined in SCF_Op), no custom verification
+    // needed.
+    let verifier = ?;
 }
 
 #endif // PLIER_OPS

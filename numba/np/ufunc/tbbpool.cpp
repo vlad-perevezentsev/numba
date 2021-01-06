@@ -15,9 +15,13 @@ Implement parallel vectorize workqueue on top of Intel TBB.
 #include <tbb/tbb.h>
 #include <string.h>
 #include <stdio.h>
+#include <algorithm>
 #include "workqueue.h"
 
 #include "gufunc_scheduler.h"
+
+#undef min
+#undef max
 
 /* TBB 2019 U5 is the minimum required version as this is needed:
  * https://github.com/intel/tbb/blob/18070344d755ece04d169e6cc40775cae9288cee/CHANGES#L133-L134
@@ -202,6 +206,36 @@ parallel_for(void *fn, char **args, size_t *dimensions, size_t *steps, void *dat
     });
 }
 
+using parallel_for2_fptr = void(*)(size_t, size_t, size_t, void*);
+static void parallel_for2(size_t lower_bound, size_t upper_bound, size_t step, parallel_for2_fptr func, void* ctx)
+{
+    auto num_threads = get_num_threads();
+    if(_DEBUG)
+    {
+        printf("parallel_for2 %d %d %d %d\n", (int)lower_bound, (int)upper_bound, (int)step, (int)num_threads);
+    }
+    tbb::task_arena limited(num_threads);
+    fix_tls_observer observer(limited, num_threads);
+
+    limited.execute([&]
+    {
+        size_t count = (upper_bound - lower_bound - 1) / step + 1;
+        size_t grain = std::max(size_t(1), std::min(count / num_threads / 2, size_t(64)));
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, count, grain),
+            [&](const tbb::blocked_range<size_t>& r)
+            {
+                auto thread_index = static_cast<size_t>(tbb::this_task_arena::current_thread_index());
+                auto begin = lower_bound + r.begin() * step;
+                auto end = lower_bound + r.end() * step;
+                if(_DEBUG)
+                {
+                    printf("parallel_for2 body %d %d %d\n", (int)begin, (int)end, (int)thread_index);
+                }
+                func(begin, end, thread_index, ctx);
+            }, tbb::auto_partitioner());
+    });
+}
+
 void ignore_blocking_terminate_assertion( const char*, int, const char*, const char * )
 {
     tbb::internal::runtime_warning("Unable to wait for threads to shut down before fork(). It can break multithreading in child process\n");
@@ -307,6 +341,8 @@ MOD_INIT(tbbpool)
                            PyLong_FromVoidPtr((void*)&add_task));
     PyObject_SetAttrString(m, "parallel_for",
                            PyLong_FromVoidPtr((void*)&parallel_for));
+    PyObject_SetAttrString(m, "parallel_for2",
+                           PyLong_FromVoidPtr((void*)&parallel_for2));
     PyObject_SetAttrString(m, "do_scheduling_signed",
                            PyLong_FromVoidPtr((void*)&do_scheduling_signed));
     PyObject_SetAttrString(m, "do_scheduling_unsigned",

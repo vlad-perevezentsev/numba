@@ -3,7 +3,21 @@
 #include <mlir/IR/Dialect.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/OpDefinition.h>
+#include <mlir/Interfaces/ControlFlowInterfaces.h>
+#include <mlir/Interfaces/LoopLikeInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
+
+namespace plier
+{
+// TODO: needed for LoopLikeInterface
+using Value = ::mlir::Value;
+using Region = ::mlir::Region;
+using LogicalResult = ::mlir::LogicalResult;
+using Operation = ::mlir::Operation;
+
+template<typename T>
+using ArrayRef = ::mlir::ArrayRef<T>;
+}
 
 #include "plier/PlierOpsEnums.h.inc"
 #include "plier/PlierOpsDialect.h.inc"
@@ -17,6 +31,7 @@ namespace attributes
 llvm::StringRef getFastmathName();
 llvm::StringRef getJumpMarkersName();
 llvm::StringRef getParallelName();
+llvm::StringRef getMaxConcurrencyName();
 }
 
 namespace detail

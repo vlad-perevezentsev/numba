@@ -8,7 +8,7 @@
 
 namespace
 {
-bool hasMemWrites(mlir::Operation *op)
+bool hasSideEffects(mlir::Operation *op)
 {
     return op->walk([&](mlir::Operation *op)
     {
@@ -19,7 +19,11 @@ bool hasMemWrites(mlir::Operation *op)
                 return mlir::WalkResult::interrupt();
             }
         }
-        if (mlir::dyn_cast<mlir::CallOpInterface>(op))
+//        if (op->hasTrait<mlir::OpTrait::HasRecursiveSideEffects>())
+//        {
+//            return mlir::WalkResult::interrupt();
+//        }
+        if (mlir::isa<mlir::CallOpInterface>(op))
         {
             return mlir::WalkResult::interrupt();
         }
@@ -31,7 +35,7 @@ bool hasMemWrites(mlir::Operation *op)
 mlir::LogicalResult PromoteToParallel::matchAndRewrite(mlir::scf::ForOp op, mlir::PatternRewriter& rewriter) const
 {
     auto has_parallel_attr = op->hasAttr(plier::attributes::getParallelName());
-    if (!has_parallel_attr && hasMemWrites(op))
+    if (!has_parallel_attr && hasSideEffects(op))
     {
         return mlir::failure();
     }
