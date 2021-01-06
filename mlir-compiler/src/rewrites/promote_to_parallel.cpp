@@ -126,7 +126,7 @@ mlir::LogicalResult PromoteToParallel::matchAndRewrite(mlir::scf::ForOp op, mlir
             auto first_op_operands = first_op->getOperands();
             auto reduce_operand = (first_op_operands[0] == reduce_arg ? first_op_operands[1] : first_op_operands[0]);
             assert(reduce_operand != reduce_arg);
-            reduce_operand = mapping.lookupOrNull(reduce_operand);
+            reduce_operand = mapping.lookupOrDefault(reduce_operand);
             assert(reduce_operand);
             builder.create<mlir::scf::ReduceOp>(loc, reduce_operand, reduce_body_builder);
         }

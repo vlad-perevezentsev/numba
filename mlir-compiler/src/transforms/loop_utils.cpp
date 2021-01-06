@@ -73,7 +73,7 @@ mlir::LogicalResult lower_while_to_for(
             }
             return op;
         };
-        if (!iternext || !pairfirst || !pairsecond || !before_term ||
+        if (!iternext || !pairsecond || !before_term ||
             skip_casts(before_term.condition()) != pairsecond)
         {
             continue;
@@ -91,7 +91,7 @@ mlir::LogicalResult lower_while_to_for(
             {
                 auto block_arg = std::get<0>(it);
                 auto term_arg = std::get<1>(it);
-                if (term_arg == pairfirst) // iter arg
+                if (pairfirst && term_arg == pairfirst) // iter arg
                 {
                     auto iter_val = get_iter_val(builder, loc, pairfirst.getType(), iv);
                     mapper.map(block_arg, iter_val);
@@ -153,7 +153,7 @@ mlir::LogicalResult lower_while_to_for(
                         break;
                     }
                 }
-                if (operand == pairfirst && !old_res.getUsers().empty())
+                if (pairfirst && operand == pairfirst && !old_res.getUsers().empty())
                 {
                     auto val = get_last_iter_value(builder, loc, lower_bound, upper_bound, step);
                     auto new_res = builder.create<plier::CastOp>(loc, old_res.getType(), val);
