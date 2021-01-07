@@ -241,7 +241,7 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
         mlir::ReturnOp op, mlir::PatternRewriter &rewriter) const override
     {
         auto operands = op.getOperands();
-        auto func = mlir::cast<mlir::FuncOp>(op.getParentOp());
+        auto func = mlir::cast<mlir::FuncOp>(op->getParentOp());
         auto res_types = func.getType().getResults();
         assert(res_types.size() == operands.size() || res_types.empty());
         bool converted = (res_types.size() != operands.size());

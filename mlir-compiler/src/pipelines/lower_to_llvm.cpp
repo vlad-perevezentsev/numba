@@ -58,15 +58,15 @@ struct LLVMTypeHelper
     LLVMTypeHelper(mlir::MLIRContext& ctx):
         type_converter(&ctx) {}
 
-    mlir::LLVM::LLVMType i(unsigned bits)
+    mlir::Type i(unsigned bits)
     {
         return mlir::LLVM::LLVMIntegerType::get(&type_converter.getContext(), bits);
     }
 
-    mlir::LLVM::LLVMType ptr(mlir::Type type)
+    mlir::Type ptr(mlir::Type type)
     {
         assert(static_cast<bool>(type));
-        auto ll_type = type_converter.convertType(type).cast<mlir::LLVM::LLVMType>();
+        auto ll_type = type_converter.convertType(type);
         assert(static_cast<bool>(ll_type));
         return mlir::LLVM::LLVMPointerType::get(ll_type);
     }
@@ -87,7 +87,7 @@ private:
 
 mlir::Type getExceptInfoType(LLVMTypeHelper& type_helper)
 {
-    mlir::LLVM::LLVMType elems[] = {
+    mlir::Type elems[] = {
         type_helper.ptr(type_helper.i(8)),
         type_helper.i(32),
         type_helper.ptr(type_helper.i(8)),
@@ -101,10 +101,10 @@ mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::
     auto ctx = type.getContext();
     auto i8p = mlir::LLVM::LLVMPointerType::get(mlir::LLVM::LLVMIntegerType::get(ctx, 8));
     auto i64 = mlir::LLVM::LLVMIntegerType::get(ctx, 64);
-    auto data_type = converter.convertType(type.getElementType()).cast<mlir::LLVM::LLVMType>();
+    auto data_type = converter.convertType(type.getElementType());
     assert(data_type);
     auto shape_type = mlir::LLVM::LLVMArrayType::get(i64, static_cast<unsigned>(type.getRank()));
-    const mlir::LLVM::LLVMType members[] = {
+    const mlir::Type members[] = {
         i8p, // 0, meminfo
         i8p, // 1, parent
         i64, // 2, nitems
@@ -117,7 +117,7 @@ mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::
 }
 
 template<typename F>
-void flatten_type(mlir::LLVM::LLVMType type, F&& func)
+void flatten_type(mlir::Type type, F&& func)
 {
     if (auto struct_type = type.dyn_cast<mlir::LLVM::LLVMStructType>())
     {
@@ -142,7 +142,7 @@ void flatten_type(mlir::LLVM::LLVMType type, F&& func)
 }
 
 template<typename F>
-mlir::Value unflatten(mlir::LLVM::LLVMType type, mlir::Location loc, mlir::OpBuilder& builder, F&& next_func)
+mlir::Value unflatten(mlir::Type type, mlir::Location loc, mlir::OpBuilder& builder, F&& next_func)
 {
     namespace mllvm = mlir::LLVM;
     if (auto struct_type = type.dyn_cast<mlir::LLVM::LLVMStructType>())
@@ -209,7 +209,7 @@ struct MemRefConversionCache
         auto loc = builder.getUnknownLoc();
         auto new_func = add_function(builder, module, func_name, func_type);
         auto alwaysinline = mlir::StringAttr::get("alwaysinline", builder.getContext());
-        new_func.setAttr("passthrough", mlir::ArrayAttr::get(alwaysinline, builder.getContext()));
+        new_func->setAttr("passthrough", mlir::ArrayAttr::get(alwaysinline, builder.getContext()));
         cache.insert({memref_type, new_func});
         mlir::OpBuilder::InsertionGuard guard(builder);
         auto block = new_func.addEntryBlock();
@@ -272,9 +272,9 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
     {
         return;
     }
-    if (func.getAttr(plier::attributes::getFastmathName()))
+    if (func->getAttr(plier::attributes::getFastmathName()))
     {
-        func.setAttr("passthrough", get_fastmath_attrs(*func.getContext()));
+        func->setAttr("passthrough", get_fastmath_attrs(*func.getContext()));
     }
     auto old_type = func.getType();
     assert(old_type.getNumResults() <= 1);
@@ -320,7 +320,7 @@ void fix_func_sig(LLVMTypeHelper& type_helper, mlir::FuncOp func)
                 return ret;
             });
 
-            auto mod = mlir::cast<mlir::ModuleOp>(func.getParentOp());
+            auto mod = mlir::cast<mlir::ModuleOp>(func->getParentOp());
             auto dst_type = type_helper.get_type_converter().convertType(memref_type);
             assert(dst_type);
             auto conv_func = conversion_cache.get_conversion_func(mod, builder, memref_type, arr_type, dst_type.cast<mlir::LLVM::LLVMStructType>());
@@ -373,7 +373,7 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
         };
 
         rewriter.setInsertionPoint(op);
-        auto addr = op.getParentRegion()->front().getArgument(0);
+        auto addr = op->getParentRegion()->front().getArgument(0);
         if (op.getNumOperands() == 0)
         {
             assert(addr.getType().isa<mlir::LLVM::LLVMPointerType>());
@@ -551,7 +551,7 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
 
         auto context_type = [&]()->mlir::LLVM::LLVMStructType
         {
-            llvm::SmallVector<mlir::LLVM::LLVMType, 8> fields;
+            llvm::SmallVector<mlir::Type, 8> fields;
             fields.reserve(context_vars.size());
             for (auto var : context_vars)
             {
@@ -560,7 +560,7 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
                 {
                     return {};
                 }
-                fields.emplace_back(type.cast<mlir::LLVM::LLVMType>());
+                fields.emplace_back(type);
             }
             return mlir::LLVM::LLVMStructType::getLiteral(op.getContext(), fields);
         }();
@@ -604,12 +604,12 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
             return mlir::FunctionType::get(op.getContext(), args, {});
         }();
 
-        auto mod = op.getParentOfType<mlir::ModuleOp>();
+        auto mod = op->getParentOfType<mlir::ModuleOp>();
         auto outlined_func = [&]()->mlir::FuncOp
         {
             auto func = [&]()
             {
-                auto parent_func = op.getParentOfType<mlir::FuncOp>();
+                auto parent_func = op->getParentOfType<mlir::FuncOp>();
                 assert(parent_func);
                 auto func_name = [&]()
                 {
@@ -826,8 +826,8 @@ struct LLVMLoweringPass : public mlir::PassWrapper<LLVMLoweringPass, mlir::Opera
     LLVMConversionTarget target(getContext());
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
-    m.setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(),
-              StringAttr::get(options.dataLayout.getStringRepresentation(), m.getContext()));
+    m->setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(),
+               StringAttr::get(options.dataLayout.getStringRepresentation(), m.getContext()));
   }
 
 private:
