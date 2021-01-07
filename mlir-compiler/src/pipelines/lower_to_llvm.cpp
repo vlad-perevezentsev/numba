@@ -22,6 +22,8 @@
 
 #include "plier/dialect.hpp"
 
+#include "transforms/func_utils.hpp"
+
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
 
@@ -205,11 +207,9 @@ struct MemRefConversionCache
         auto func_name = gen_conversion_func_name(memref_type);
         auto func_type = mlir::FunctionType::get(builder.getContext(),src_type, dst_type);
         auto loc = builder.getUnknownLoc();
-        auto new_func = mlir::FuncOp::create(loc, func_name, func_type);
-        new_func.setPrivate();
+        auto new_func = add_function(builder, module, func_name, func_type);
         auto alwaysinline = mlir::StringAttr::get("alwaysinline", builder.getContext());
         new_func.setAttr("passthrough", mlir::ArrayAttr::get(alwaysinline, builder.getContext()));
-        module.push_back(new_func);
         cache.insert({memref_type, new_func});
         mlir::OpBuilder::InsertionGuard guard(builder);
         auto block = new_func.addEntryBlock();
@@ -467,6 +467,22 @@ public:
   mlir::LLVM::LLVMFuncOp getFunction() { return this->getOperation(); }
 };
 
+void copyAttrs(mlir::Operation* src, mlir::Operation* dst)
+{
+    const mlir::StringRef attrs[] = {
+        plier::attributes::getFastmathName(),
+        plier::attributes::getParallelName(),
+        plier::attributes::getMaxConcurrencyName(),
+    };
+    for (auto name : attrs)
+    {
+        if (auto attr = src->getAttr(name))
+        {
+            dst->setAttr(name, attr);
+        }
+    }
+}
+
 struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
 {
     LowerParallel(mlir::MLIRContext* context):
@@ -593,9 +609,11 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
         {
             auto func = [&]()
             {
+                auto parent_func = op.getParentOfType<mlir::FuncOp>();
+                assert(parent_func);
                 auto func_name = [&]()
                 {
-                    auto old_name = op.getParentOfType<mlir::FuncOp>().getName();
+                    auto old_name = parent_func.getName();
                     for (int i = 0;;++i)
                     {
                         auto name = (0 == i ?
@@ -608,12 +626,8 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
                     }
                 }();
 
-                mlir::OpBuilder::InsertionGuard guard(rewriter);
-                // Insert before module terminator.
-                rewriter.setInsertionPoint(mod.getBody(),
-                                           std::prev(mod.getBody()->end()));
-                auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), func_name, func_type);
-                func.setPrivate();
+                auto func = add_function(rewriter, mod, func_name, func_type);
+                copyAttrs(parent_func, func);
                 return func;
             }();
             mlir::BlockAndValueMapping mapping;
@@ -675,13 +689,7 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
                 void_ptr_type
             };
             auto func_type = mlir::FunctionType::get(op.getContext(), args, {});
-            mlir::OpBuilder::InsertionGuard guard(rewriter);
-            // Insert before module terminator.
-            rewriter.setInsertionPoint(mod.getBody(),
-                                       std::prev(mod.getBody()->end()));
-            auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), func_name, func_type);
-            func.setPrivate();
-            return func;
+            return add_function(rewriter, mod, func_name, func_type);
         }();
         auto func_addr = rewriter.create<mlir::ConstantOp>(loc, func_type, rewriter.getSymbolRefAttr(outlined_func));
         mlir::Value pf_args[] = {

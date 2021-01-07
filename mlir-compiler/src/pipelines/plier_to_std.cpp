@@ -18,6 +18,7 @@
 #include "rewrites/call_lowering.hpp"
 #include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
+#include "transforms/func_utils.hpp"
 #include "transforms/loop_utils.hpp"
 
 #include "base_pipeline.hpp"
@@ -1107,13 +1108,7 @@ mlir::FuncOp get_lib_symbol(
         return op;
     }
 
-    mlir::OpBuilder::InsertionGuard guard(rewriter);
-    // Insert before module terminator.
-    rewriter.setInsertionPoint(mod.getBody(),
-                               std::prev(mod.getBody()->end()));
-    auto func = rewriter.create<mlir::FuncOp>(rewriter.getUnknownLoc(), name, type);
-    func.setPrivate();
-    return func;
+    return add_function(rewriter, mod, name, type);
 }
 
 mlir::LogicalResult lower_math_func(

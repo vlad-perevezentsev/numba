@@ -30,6 +30,7 @@ set(SOURCES_LIST
     src/rewrites/cast_lowering.cpp
     src/rewrites/promote_to_parallel.cpp
     src/rewrites/type_conversion.cpp
+    src/transforms/func_utils.cpp
     src/transforms/loop_utils.cpp
     src/transforms/pipeline_utils.cpp
     src/compiler.cpp
@@ -52,6 +53,7 @@ set(HEADERS_LIST
     src/rewrites/cast_lowering.hpp
     src/rewrites/promote_to_parallel.hpp
     src/rewrites/type_conversion.hpp
+    src/transforms/func_utils.hpp
     src/transforms/loop_utils.hpp
     src/transforms/pipeline_utils.hpp
     src/compiler.hpp

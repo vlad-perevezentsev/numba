@@ -146,8 +146,11 @@ struct plier_lowerer final
         {
             func.setAttr(plier::attributes::getFastmathName(), mlir::UnitAttr::get(&ctx));
         }
-        auto max_concurrency = builder.getI64IntegerAttr(compilation_context["max_concurrency"]().cast<int>());
-        mod.setAttr(plier::attributes::getMaxConcurrencyName(), max_concurrency);
+        auto max_concurrency = compilation_context["max_concurrency"]().cast<int>();
+        if (max_concurrency > 0)
+        {
+            mod.setAttr(plier::attributes::getMaxConcurrencyName(), builder.getI64IntegerAttr(max_concurrency));
+        }
         lower_func_body(func_ir);
         mod.push_back(func);
         return mod;
