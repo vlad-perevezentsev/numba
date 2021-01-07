@@ -262,6 +262,7 @@ mlir::Attribute get_fastmath_attrs(mlir::MLIRContext& ctx)
         add_pair("no-nans-fp-math", "true"),
         add_pair("no-signed-zeros-fp-math", "true"),
         add_pair("unsafe-fp-math", "true"),
+        add_pair(plier::attributes::getFastmathName(), "1"),
     };
     return mlir::ArrayAttr::get(attrs, &ctx);
 }
@@ -403,6 +404,7 @@ private:
     mlir::TypeConverter& type_converter;
 };
 
+// Remove redundant bitcasts we have created on PreLowering
 struct RemoveBitcasts : public mlir::OpRewritePattern<mlir::LLVM::BitcastOp>
 {
     using mlir::OpRewritePattern<mlir::LLVM::BitcastOp>::OpRewritePattern;
@@ -416,6 +418,51 @@ struct RemoveBitcasts : public mlir::OpRewritePattern<mlir::LLVM::BitcastOp>
             return mlir::success();
         }
         return mlir::failure();
+    }
+};
+
+template<typename Op>
+struct ApplyFastmathFlags : public mlir::OpRewritePattern<Op>
+{
+    using mlir::OpRewritePattern<Op>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        Op op, mlir::PatternRewriter& rewriter) const
+    {
+        auto parent = mlir::cast<mlir::LLVM::LLVMFuncOp>(op->getParentOp());
+        bool changed = false;
+
+        rewriter.startRootUpdate(op);
+        auto fmf = op.fastmathFlags();
+        getFastmathFlags(parent, [&](auto flag)
+        {
+            if (!mlir::LLVM::bitEnumContains(fmf, flag))
+            {
+                fmf = fmf | flag;
+                changed = true;
+            }
+        });
+        if (changed)
+        {
+            op.fastmathFlagsAttr(mlir::LLVM::FMFAttr::get(fmf, op.getContext()));
+            rewriter.finalizeRootUpdate(op);
+        }
+        else
+        {
+            rewriter.cancelRootUpdate(op);
+        }
+
+        return mlir::success(changed);
+    }
+
+private:
+    template<typename F>
+    static void getFastmathFlags(mlir::LLVM::LLVMFuncOp func, F&& sink)
+    {
+        if (func->hasAttr(plier::attributes::getFastmathName()))
+        {
+            sink(mlir::LLVM::FastmathFlags::fast);
+        }
     }
 };
 
@@ -764,8 +811,16 @@ struct PostLLVMLowering :
     {
         mlir::OwningRewritePatternList patterns;
 
-        // Remove redundant bitcasts we have created on PreLowering
-        patterns.insert<RemoveBitcasts>(&getContext());
+        patterns.insert<
+            RemoveBitcasts,
+            ApplyFastmathFlags<mlir::LLVM::FAddOp>,
+            ApplyFastmathFlags<mlir::LLVM::FSubOp>,
+            ApplyFastmathFlags<mlir::LLVM::FMulOp>,
+            ApplyFastmathFlags<mlir::LLVM::FDivOp>,
+            ApplyFastmathFlags<mlir::LLVM::FRemOp>,
+            ApplyFastmathFlags<mlir::LLVM::FCmpOp>,
+            ApplyFastmathFlags<mlir::LLVM::CallOp>
+            >(&getContext());
 
         (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
     }
@@ -841,6 +896,7 @@ void populate_lower_to_llvm_pipeline(mlir::OpPassManager& pm)
 //    pm.addPass(std::make_unique<CheckForPlierTypes>());
     pm.addNestedPass<mlir::FuncOp>(std::make_unique<PreLLVMLowering>());
     pm.addPass(std::make_unique<LLVMLoweringPass>(getLLVMOptions()));
+//    pm.addPass(mlir::createLowerToLLVMPass(getLLVMOptions()));
     pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(std::make_unique<PostLLVMLowering>());
 }
 }
