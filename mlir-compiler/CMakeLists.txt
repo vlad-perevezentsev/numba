@@ -36,8 +36,8 @@ set(SOURCES_LIST
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
-    src/module.cpp
     src/pipeline_registry.cpp
+    src/py_module.cpp
     src/utils.cpp
     )
 set(HEADERS_LIST
@@ -59,6 +59,7 @@ set(HEADERS_LIST
     src/compiler.hpp
     src/lowering.hpp
     src/pipeline_registry.hpp
+    src/py_module.hpp
     src/utils.hpp
     )
 

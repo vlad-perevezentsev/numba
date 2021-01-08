@@ -111,7 +111,6 @@ mlir::OpFoldResult ArgOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
     if (ind >= func.getNumArguments() ||
         func.getArgument(ind).getType() != getType())
     {
-        emitError("Invalid function args");
         return nullptr;
     }
     return func.getArgument(ind);

@@ -134,9 +134,9 @@ struct plier_lowerer final
         ctx.loadDialect<plier::PlierDialect>();
     }
 
-    mlir::ModuleOp lower(const py::object& compilation_context, const py::object& func_ir)
+    mlir::FuncOp lower(const py::object& compilation_context, mlir::ModuleOp mod, const py::object& func_ir)
     {
-        auto mod = mlir::ModuleOp::create(builder.getUnknownLoc());
+
         typemap = compilation_context["typemap"];
         func_name_resolver = compilation_context["resolve_func"];
         auto name = compilation_context["fnname"]().cast<std::string>();
@@ -144,16 +144,16 @@ struct plier_lowerer final
         func = mlir::FuncOp::create(builder.getUnknownLoc(), name, typ);
         if (compilation_context["fastmath"]().cast<bool>())
         {
-            func.setAttr(plier::attributes::getFastmathName(), mlir::UnitAttr::get(&ctx));
+            func->setAttr(plier::attributes::getFastmathName(), mlir::UnitAttr::get(&ctx));
         }
         auto max_concurrency = compilation_context["max_concurrency"]().cast<int>();
         if (max_concurrency > 0)
         {
-            mod.setAttr(plier::attributes::getMaxConcurrencyName(), builder.getI64IntegerAttr(max_concurrency));
+            mod->setAttr(plier::attributes::getMaxConcurrencyName(), builder.getI64IntegerAttr(max_concurrency));
         }
         lower_func_body(func_ir);
         mod.push_back(func);
-        return mod;
+        return func;
     }
 private:
     mlir::MLIRContext& ctx;
@@ -653,18 +653,57 @@ void create_pipeline(PipelineRegistry& registry)
     register_plier_to_linalg_pipeline(registry);
     register_parallel_to_tbb_pipeline(registry);
 }
-}
 
-py::bytes lower_function(const py::object& compilation_context, const py::object& func_ir)
+struct Module
 {
-//    mlir::registerDialect<mlir::StandardOpsDialect>();
-//    mlir::registerDialect<plier::PlierDialect>();
     mlir::MLIRContext context;
-    auto mod = plier_lowerer(context).lower(compilation_context, func_ir);
     PipelineRegistry registry;
-    create_pipeline(registry);
+    mlir::ModuleOp module;
+
+    Module()
+    {
+        create_pipeline(registry);
+    }
+};
+
+mlir::FuncOp run_compiler(Module& mod, const py::object& compilation_context, const py::object& func_ir)
+{
+    auto& context = mod.context;
+    auto& module = mod.module;
+    auto& registry = mod.registry;
+    auto func = plier_lowerer(context).lower(compilation_context, module, func_ir);
+
     auto settings = get_settings(compilation_context["compiler_settings"]);
     CompilerContext compiler(context, settings, registry);
-    compiler.run(mod);
-    return gen_ll_module(mod);
+    compiler.run(module);
+    return func;
+}
+}
+
+py::capsule create_module()
+{
+    auto mod = std::make_unique<Module>();
+    {
+        mlir::OpBuilder builder(&mod->context);
+        mod->module = mlir::ModuleOp::create(builder.getUnknownLoc());
+    }
+    py::capsule capsule(mod.get(), [](void* ptr)
+    {
+        delete static_cast<Module*>(ptr);
+    });
+    mod.release();
+    return capsule;
+}
+
+py::capsule lower_function(const py::object& compilation_context, const py::capsule& py_mod, const py::object& func_ir)
+{
+    auto mod = static_cast<Module*>(py_mod);
+    auto func = run_compiler(*mod, compilation_context, func_ir);
+    return py::capsule(func.getOperation()); // no dtor, func owned by module
+}
+
+py::bytes serialize_module(const py::capsule& py_mod)
+{
+    auto mod = static_cast<Module*>(py_mod);
+    return gen_ll_module(mod->module);
 }

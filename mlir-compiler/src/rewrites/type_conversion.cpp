@@ -125,12 +125,40 @@ mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
         return mlir::failure();
     }
 
+    bool ret_type_changed = false;
     // Update the function signature in-place.
     rewriter.updateRootInPlace(funcOp, [&] {
+        ret_type_changed = (newResults != funcOp.getType().getResults());
         funcOp.setType(mlir::FunctionType::get(
             funcOp.getContext(), result.getConvertedTypes(), newResults));
         auto res = convertRegionTypes(&funcOp.getBody(), converter, true);
         assert(mlir::succeeded(res));
     });
+    if (ret_type_changed)
+    {
+        auto ret_types = funcOp.getType().getResults();
+        funcOp.walk([&](mlir::ReturnOp ret)
+        {
+            if (ret->getParentOp() == funcOp)
+            {
+                mlir::OpBuilder::InsertionGuard g(rewriter);
+                rewriter.setInsertionPoint(ret);
+                for (auto it : llvm::enumerate(llvm::zip(ret.getOperandTypes(), ret_types)))
+                {
+                    auto prev_type = std::get<0>(it.value());
+                    auto new_type = std::get<1>(it.value());
+                    if (prev_type != new_type)
+                    {
+                        auto index = static_cast<unsigned>(it.index());
+                        auto cast = rewriter.create<plier::CastOp>(ret.getLoc(), new_type, ret.getOperand(index));
+                        rewriter.updateRootInPlace(ret, [&]()
+                        {
+                            ret.setOperand(index, cast);
+                        });
+                    }
+                }
+            }
+        });
+    }
     return mlir::success();
 }
