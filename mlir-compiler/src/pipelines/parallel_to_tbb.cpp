@@ -54,8 +54,8 @@ struct ParallelToTbb : public mlir::OpRewritePattern<mlir::scf::ParallelOp>
         }
 
         int64_t max_concurrency = 0;
-        auto mod = op.getParentOfType<mlir::ModuleOp>();
-        if (auto mc = mod.getAttrOfType<mlir::IntegerAttr>(plier::attributes::getMaxConcurrencyName()))
+        auto mod = op->getParentOfType<mlir::ModuleOp>();
+        if (auto mc = mod->getAttrOfType<mlir::IntegerAttr>(plier::attributes::getMaxConcurrencyName()))
         {
             max_concurrency = mc.getInt();
         }

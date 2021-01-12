@@ -6,6 +6,5 @@
 
 void report_error(const llvm::Twine& msg)
 {
-    auto str = msg.str();
-    throw std::exception(str.c_str());
+    throw std::runtime_error(msg.str());
 }

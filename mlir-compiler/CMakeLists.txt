@@ -4,6 +4,12 @@ project(mlir_compiler LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+if(UNIX)
+    add_link_options("-Wl,--exclude-libs,ALL")
+endif()
+
 
 find_package(pybind11 REQUIRED)
 
@@ -75,15 +81,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     LLVM${LLVM_NATIVE_ARCH}CodeGen
     LLVM${LLVM_NATIVE_ARCH}Desc
     LLVMTarget
-    MLIRSupport
+    MLIRIR
     MLIRLLVMIR
-    MLIRStandard
     MLIRTargetLLVMIR
     MLIRTransforms
-    MLIRStandardToLLVM
+    MLIRStandardOpsTransforms
     MLIRLinalgTransforms
     MLIRSCFToStandard
-    MLIRTensor
     MLIRTensorTransforms
     )
 
