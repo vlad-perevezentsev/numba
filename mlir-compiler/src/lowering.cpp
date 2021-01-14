@@ -707,3 +707,13 @@ py::bytes serialize_module(const py::capsule& py_mod)
     auto mod = static_cast<Module*>(py_mod);
     return gen_ll_module(mod->module);
 }
+
+py::str module_str(const py::capsule& py_mod)
+{
+    auto mod = static_cast<Module*>(py_mod);
+    std::string ret;
+    llvm::raw_string_ostream ss(ret);
+    mod->module.print(ss);
+    ss.flush();
+    return py::str(ss.str());
+}

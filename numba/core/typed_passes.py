@@ -508,7 +508,21 @@ class MlirBackendBase(FunctionPass):
         ctx['max_concurrency'] = lambda: get_thread_count() if state.flags.auto_parallel.enabled else 0
         return ctx
 
+@register_pass(mutates_CFG=True, analysis_only=False)
+class MlirDumpPlier(MlirBackendBase):
 
+    _name = "mlir_dump_plier"
+
+    def __init__(self):
+        MlirBackendBase.__init__(self)
+
+    def run_pass(self, state):
+        import mlir_compiler
+        module = mlir_compiler.create_module()
+        ctx = self._get_func_context(state)
+        mlir_compiler.lower_function(ctx, module, state.func_ir)
+        print(mlir_compiler.module_str(module))
+        return True
 
 @register_pass(mutates_CFG=True, analysis_only=False)
 class MlirBackend(MlirBackendBase):
