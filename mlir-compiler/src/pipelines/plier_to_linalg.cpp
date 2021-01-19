@@ -25,6 +25,7 @@
 #include "rewrites/call_lowering.hpp"
 #include "rewrites/canonicalize_reductions.hpp"
 #include "rewrites/cast_lowering.hpp"
+#include "rewrites/cse.hpp"
 #include "rewrites/promote_to_parallel.hpp"
 #include "rewrites/type_conversion.hpp"
 #include "transforms/loop_utils.hpp"
@@ -637,7 +638,8 @@ void PostLinalgOptPass::runOnOperation()
     patterns.insert<
         CanonicalizeReduction,
 //        LoopInvariantCodeMotion, TODO
-        PromoteToParallel
+        PromoteToParallel,
+        CSERewrite<mlir::FuncOp>
         >(&getContext());
 
 

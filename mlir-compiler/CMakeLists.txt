@@ -34,6 +34,7 @@ set(SOURCES_LIST
     src/rewrites/call_lowering.cpp
     src/rewrites/canonicalize_reductions.cpp
     src/rewrites/cast_lowering.cpp
+    src/rewrites/cse.cpp
     src/rewrites/promote_to_parallel.cpp
     src/rewrites/type_conversion.cpp
     src/transforms/func_utils.cpp
@@ -57,6 +58,7 @@ set(HEADERS_LIST
     src/rewrites/call_lowering.hpp
     src/rewrites/canonicalize_reductions.hpp
     src/rewrites/cast_lowering.hpp
+    src/rewrites/cse.hpp
     src/rewrites/promote_to_parallel.hpp
     src/rewrites/type_conversion.hpp
     src/transforms/func_utils.hpp
