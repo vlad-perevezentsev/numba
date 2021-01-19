@@ -134,6 +134,7 @@ mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
         auto res = convertRegionTypes(&funcOp.getBody(), converter, true);
         assert(mlir::succeeded(res));
     });
+
     if (ret_type_changed)
     {
         auto ret_types = funcOp.getType().getResults();
@@ -159,6 +160,26 @@ mlir::LogicalResult FuncOpSignatureConversion::matchAndRewrite(
                 }
             }
         });
+        auto mod = funcOp->getParentOfType<mlir::ModuleOp>();
+        auto uses = funcOp.getSymbolUses(mod);
+        if (uses)
+        {
+            for (auto use : *uses)
+            {
+                if (auto call = mlir::dyn_cast<mlir::CallOp>(use.getUser()))
+                {
+                    rewriter.updateRootInPlace(call, [&]()
+                    {
+                        for (auto it : llvm::zip(call.getResults(), ret_types))
+                        {
+                            auto res = std::get<0>(it);
+                            auto type = std::get<1>(it);
+                            res.setType(type);
+                        }
+                    });
+                }
+            }
+        }
     }
     return mlir::success();
 }

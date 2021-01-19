@@ -98,6 +98,7 @@ struct inst_handles
         Var = mod.attr("Var");
         Const = mod.attr("Const");
         Global = mod.attr("Global");
+        FreeVar = mod.attr("FreeVar");
 
         auto ops = py::module::import("operator");
 
@@ -120,6 +121,7 @@ struct inst_handles
     py::handle Var;
     py::handle Const;
     py::handle Global;
+    py::handle FreeVar;
 
     std::array<py::handle, llvm::array_lengthof(inst_ops_names)> ops_handles;
 };
@@ -276,7 +278,8 @@ private:
         {
             return get_const(value.attr("value"));
         }
-        if (py::isinstance(value, insts.Global))
+        if (py::isinstance(value, insts.Global) ||
+            py::isinstance(value, insts.FreeVar))
         {
             auto name = value.attr("name").cast<std::string>();
             return builder.create<plier::GlobalOp>(get_current_loc(),
@@ -666,17 +669,15 @@ struct Module
     }
 };
 
-mlir::FuncOp run_compiler(Module& mod, const py::object& compilation_context, const py::object& func_ir)
+void run_compiler(Module& mod, const py::object& compilation_context)
 {
     auto& context = mod.context;
     auto& module = mod.module;
     auto& registry = mod.registry;
-    auto func = plier_lowerer(context).lower(compilation_context, module, func_ir);
 
     auto settings = get_settings(compilation_context["compiler_settings"]);
     CompilerContext compiler(context, settings, registry);
     compiler.run(module);
-    return func;
 }
 }
 
@@ -698,13 +699,16 @@ py::capsule create_module()
 py::capsule lower_function(const py::object& compilation_context, const py::capsule& py_mod, const py::object& func_ir)
 {
     auto mod = static_cast<Module*>(py_mod);
-    auto func = run_compiler(*mod, compilation_context, func_ir);
+    auto& context = mod->context;
+    auto& module = mod->module;
+    auto func = plier_lowerer(context).lower(compilation_context, module, func_ir);
     return py::capsule(func.getOperation()); // no dtor, func owned by module
 }
 
-py::bytes serialize_module(const py::capsule& py_mod)
+py::bytes compile_module(const py::object& compilation_context, const py::capsule& py_mod)
 {
     auto mod = static_cast<Module*>(py_mod);
+    run_compiler(*mod, compilation_context);
     return gen_ll_module(mod->module);
 }
 

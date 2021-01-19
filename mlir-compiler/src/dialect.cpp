@@ -107,14 +107,17 @@ void ArgOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 
 mlir::OpFoldResult ArgOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
 {
-    auto func = getParentOfType<mlir::FuncOp>();
-    auto ind = index();
-    if (ind >= func.getNumArguments() ||
-        func.getArgument(ind).getType() != getType())
+    auto func = getOperation()->getParentOfType<mlir::FuncOp>();
+    if (func)
     {
-        return nullptr;
+        auto ind = index();
+        if (ind < func.getNumArguments() &&
+            func.getArgument(ind).getType() == getType())
+        {
+            return func.getArgument(ind);
+        }
     }
-    return func.getArgument(ind);
+    return nullptr;
 }
 
 void ConstOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,

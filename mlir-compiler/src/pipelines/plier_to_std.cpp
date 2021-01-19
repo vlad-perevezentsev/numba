@@ -23,6 +23,8 @@
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
+#include "py_func_resolver.hpp"
+#include "mangle.hpp"
 
 namespace
 {
@@ -230,6 +232,41 @@ struct ConstOpLowering : public mlir::OpRewritePattern<plier::ConstOp>
         return mlir::success();
     }
 };
+
+struct ArgOpLowering : public mlir::OpRewritePattern<plier::ArgOp>
+{
+    ArgOpLowering(mlir::TypeConverter &typeConverter,
+                  mlir::MLIRContext *context):
+        OpRewritePattern(context), converter(typeConverter) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::ArgOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto func = op->getParentOfType<mlir::FuncOp>();
+        if (!func)
+        {
+            return mlir::failure();
+        }
+
+        auto index= op.index();
+        if (index >= func.getNumArguments())
+        {
+            return mlir::failure();
+        }
+
+        auto arg = func.getArgument(index);
+        if(converter.convertType(op.getType()) != arg.getType())
+        {
+            return mlir::failure();
+        }
+        rewriter.replaceOp(op, arg);
+        return mlir::success();
+    }
+private:
+    mlir::TypeConverter& converter;
+};
+
+
 
 struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
 {
@@ -1102,7 +1139,7 @@ mlir::FuncOp get_lib_symbol(
     mlir::PatternRewriter& rewriter)
 {
     assert(!name.empty());
-    if (auto op = mlir::dyn_cast_or_null<mlir::FuncOp>(mod.lookupSymbol(name)))
+    if (auto op = mod.lookupSymbol<mlir::FuncOp>(name))
     {
         assert(op.getType() == type);
         return op;
@@ -1125,7 +1162,7 @@ mlir::LogicalResult lower_math_func(
     {
         auto is_float = ret_type.isa<mlir::Float32Type>();
         auto func_type = mlir::FunctionType::get(op.getContext(), args[0].getType(), ret_type);
-        auto module = op.getParentOfType<mlir::ModuleOp>();
+        auto module = op->getParentOfType<mlir::ModuleOp>();
         mlir::FuncOp func;
         if (is_float)
         {
@@ -1143,28 +1180,60 @@ mlir::LogicalResult lower_math_func(
     return mlir::failure();
 }
 
-mlir::LogicalResult basic_rewrite(
-    plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
-    mlir::PatternRewriter& rewriter)
+struct CallLowerer
 {
-    if (mlir::succeeded(lower_math_func(op, name, args, rewriter)))
+    mlir::LogicalResult operator()(plier::PyCallOp op, llvm::StringRef name,
+        llvm::ArrayRef<mlir::Value> args, mlir::PatternRewriter& rewriter)
     {
-        return mlir::success();
-    }
-    using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
-    std::pair<llvm::StringRef, func_t> handlers[] = {
-        {"bool", lower_bool_cast},
-        {"range", lower_range},
-    };
-    for (auto& handler : handlers)
-    {
-        if (handler.first == name)
+        if (mlir::succeeded(lower_math_func(op, name, args, rewriter)))
         {
-            return handler.second(op, args, rewriter);
+            return mlir::success();
         }
+
+        using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
+        std::pair<llvm::StringRef, func_t> handlers[] = {
+            {"bool", lower_bool_cast},
+            {"range", lower_range},
+        };
+        for (auto& handler : handlers)
+        {
+            if (handler.first == name)
+            {
+                return handler.second(op, args, rewriter);
+            }
+        }
+
+        mlir::ValueRange r(args);
+        auto mangled_name = mangle(name, r.getTypes());
+        if (!mangled_name.empty())
+        {
+            auto mod = op->getParentOfType<mlir::ModuleOp>();
+            assert(mod);
+            auto func = mod.lookupSymbol<mlir::FuncOp>(mangled_name);
+            if (!func)
+            {
+                func = py_resolver.get_func(name, r.getTypes());
+                if (func)
+                {
+                    func.setPrivate();
+                    func.setName(mangled_name);
+                }
+            }
+            if (func)
+            {
+                assert(func.getType().getNumResults() == op->getNumResults());
+                auto new_func_call = rewriter.create<mlir::CallOp>(op.getLoc(), func, args);
+                rewriter.replaceOp(op, new_func_call.getResults());
+                return mlir::success();
+            }
+        }
+
+        return mlir::failure();
     }
-    return mlir::failure();
-}
+
+private:
+    PyFuncResolver py_resolver;
+};
 
 struct PlierToStdPass :
     public mlir::PassWrapper<PlierToStdPass, mlir::OperationPass<mlir::ModuleOp>>
@@ -1193,6 +1262,7 @@ void PlierToStdPass::runOnOperation()
 
     patterns.insert<
         FuncOpSignatureConversion,
+        ArgOpLowering,
         ReturnOpLowering,
         ConstOpLowering,
         SelectOpLowering,
@@ -1208,9 +1278,11 @@ void PlierToStdPass::runOnOperation()
         CastOpLowering
         >(type_converter, context, &do_cast);
 
+    CallLowerer callLowerer;
+
     patterns.insert<
         CallOpLowering
-        >(type_converter, context, basic_rewrite);
+        >(type_converter, context, callLowerer);
 
     mlir::populateStdExpandOpsPatterns(context, patterns);
 

@@ -43,7 +43,9 @@ set(SOURCES_LIST
     src/compiler.cpp
     src/dialect.cpp
     src/lowering.cpp
+    src/mangle.cpp
     src/pipeline_registry.cpp
+    src/py_func_resolver.cpp
     src/py_module.cpp
     src/utils.cpp
     )
@@ -66,7 +68,9 @@ set(HEADERS_LIST
     src/transforms/pipeline_utils.hpp
     src/compiler.hpp
     src/lowering.hpp
+    src/mangle.hpp
     src/pipeline_registry.hpp
+    src/py_func_resolver.hpp
     src/py_module.hpp
     src/utils.hpp
     )
