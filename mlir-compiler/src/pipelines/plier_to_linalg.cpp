@@ -555,7 +555,7 @@ void PlierToLinalgPass::runOnOperation()
 
     patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), &call_rewrite);
+        >(type_converter, &getContext(), call_rewrite);
 
     patterns.insert<
         GetitemOpLowering<plier::GetItemOp>,

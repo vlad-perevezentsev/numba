@@ -1204,13 +1204,13 @@ void PlierToStdPass::runOnOperation()
         FixupWhileTypes
         >(type_converter, context);
 
-        patterns.insert<
+    patterns.insert<
         CastOpLowering
         >(type_converter, context, &do_cast);
 
-        patterns.insert<
+    patterns.insert<
         CallOpLowering
-        >(type_converter, context, &basic_rewrite);
+        >(type_converter, context, basic_rewrite);
 
     mlir::populateStdExpandOpsPatterns(context, patterns);
 

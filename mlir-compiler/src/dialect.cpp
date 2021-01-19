@@ -4,6 +4,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/PatternMatch.h>
 
 #include <mlir/Dialect/StandardOps/IR/Ops.h>
 
@@ -270,6 +271,34 @@ void GetattrOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                       mlir::Value value, mlir::StringRef name) {
     GetattrOp::build(builder, state, PyType::getUndefined(state.getContext()),
                      value, name);
+}
+
+namespace
+{
+struct GetattrGlobalRewrite : public mlir::OpRewritePattern<GetattrOp>
+{
+    using mlir::OpRewritePattern<GetattrOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(
+        GetattrOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto prev_op = mlir::dyn_cast_or_null<plier::GlobalOp>(op.getOperand().getDefiningOp());
+        if (prev_op)
+        {
+            auto new_name = llvm::Twine(prev_op.name() + "." + op.name()).str();
+            auto new_op = rewriter.create<plier::GlobalOp>(op.getLoc(), op.getType(), new_name);
+            rewriter.replaceOp(op, new_op.getResult());
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+};
+}
+
+void GetattrOp::getCanonicalizationPatterns(
+    ::mlir::OwningRewritePatternList &results, ::mlir::MLIRContext *context)
+{
+    results.insert<GetattrGlobalRewrite>(context);
 }
 
 mlir::LogicalResult ParallelOp::moveOutOfLoop(mlir::ArrayRef<mlir::Operation *> ops)

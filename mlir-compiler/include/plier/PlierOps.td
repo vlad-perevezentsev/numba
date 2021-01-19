@@ -205,6 +205,8 @@ def GetattrOp : Plier_Op<"getattr", [NoSideEffect]> {
 
     let results = (outs AnyType);
 
+    let hasCanonicalizer = 1;
+
     let builders = [
         OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::StringRef":$name)>
     ];
