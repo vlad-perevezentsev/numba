@@ -60,7 +60,7 @@ struct LLVMTypeHelper
 
     mlir::Type i(unsigned bits)
     {
-        return mlir::LLVM::LLVMIntegerType::get(&type_converter.getContext(), bits);
+        return mlir::IntegerType::get(&type_converter.getContext(), bits);
     }
 
     mlir::Type ptr(mlir::Type type)
@@ -99,8 +99,8 @@ mlir::LLVM::LLVMStructType get_array_type(mlir::TypeConverter& converter, mlir::
 {
     assert(type);
     auto ctx = type.getContext();
-    auto i8p = mlir::LLVM::LLVMPointerType::get(mlir::LLVM::LLVMIntegerType::get(ctx, 8));
-    auto i64 = mlir::LLVM::LLVMIntegerType::get(ctx, 64);
+    auto i8p = mlir::LLVM::LLVMPointerType::get(mlir::IntegerType::get(ctx, 8));
+    auto i64 = mlir::IntegerType::get(ctx, 64);
     auto data_type = converter.convertType(type.getElementType());
     assert(data_type);
     auto shape_type = mlir::LLVM::LLVMArrayType::get(i64, static_cast<unsigned>(type.getRank()));
@@ -225,7 +225,7 @@ struct MemRefConversionCache
         auto ptr = extract(4);
         auto shape = extract(5);
         auto strides = extract(6);
-        auto i64 = mllvm::LLVMIntegerType::get(builder.getContext(), 64);
+        auto i64 = mlir::IntegerType::get(builder.getContext(), 64);
         auto offset = builder.create<mllvm::ConstantOp>(loc, i64, builder.getI64IntegerAttr(0));
         mlir::Value res = builder.create<mllvm::UndefOp>(loc, dst_type);
         auto insert = [&](unsigned index, mlir::Value val)
@@ -368,7 +368,7 @@ struct ReturnOpLowering : public mlir::OpRewritePattern<mlir::ReturnOp>
         {
             auto ctx = op.getContext();
             auto ret_type = mlir::IntegerType::get(ctx, 32);
-            auto ll_ret_type = mlir::LLVM::LLVMIntegerType::get(ctx, 32);
+            auto ll_ret_type = mlir::IntegerType::get(ctx, 32);
             mlir::Value ret = rewriter.create<mlir::LLVM::ConstantOp>(op.getLoc(), ll_ret_type, mlir::IntegerAttr::get(ret_type, 0));
             rewriter.replaceOpWithNewOp<mlir::LLVM::ReturnOp>(op, ret);
         };
@@ -619,7 +619,7 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
         auto context_ptr_type = mlir::LLVM::LLVMPointerType::get(context_type);
 
         auto loc = op.getLoc();
-        auto llvm_i32_type = mlir::LLVM::LLVMIntegerType::get(op.getContext(), 32);
+        auto llvm_i32_type = mlir::IntegerType::get(op.getContext(), 32);
         auto zero = rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(0));
         auto one = rewriter.create<mlir::LLVM::ConstantOp>(loc, llvm_i32_type, rewriter.getI32IntegerAttr(1));
         auto context = rewriter.create<mlir::LLVM::AllocaOp>(loc, context_ptr_type, one, 0);
@@ -636,7 +636,7 @@ struct LowerParallel : public mlir::OpRewritePattern<plier::ParallelOp>
             auto ptr = rewriter.create<mlir::LLVM::GEPOp>(loc, pointer_type, context, indices);
             rewriter.create<mlir::LLVM::StoreOp>(loc, llvm_val, ptr);
         }
-        auto void_ptr_type = mlir::LLVM::LLVMPointerType::get(mlir::LLVM::LLVMIntegerType::get(op.getContext(), 8));
+        auto void_ptr_type = mlir::LLVM::LLVMPointerType::get(mlir::IntegerType::get(op.getContext(), 8));
         auto context_abstract = rewriter.create<mlir::LLVM::BitcastOp>(loc, void_ptr_type, context);
 
         auto index_type = rewriter.getIndexType();

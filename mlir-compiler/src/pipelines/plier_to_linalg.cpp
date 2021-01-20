@@ -247,7 +247,7 @@ mlir::LogicalResult call_rewrite(
         auto elem_type = mlir::IntegerType::get(op.getContext(), 64);
         auto res_type = mlir::RankedTensorType::get(1, elem_type);
         mlir::Value zero = rewriter.create<mlir::ConstantOp>(loc, get_zero(elem_type));
-        mlir::Value init = rewriter.create<mlir::TensorFromElementsOp>(loc, zero);
+        mlir::Value init = rewriter.create<mlir::tensor::FromElementsOp>(loc, zero);
         mlir::AffineMap map[] = {
             mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
             mlir::AffineMap::get(1, 0, mlir::getAffineConstantExpr(0, op.getContext())),
