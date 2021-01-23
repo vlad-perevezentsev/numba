@@ -432,7 +432,7 @@ struct SetitemOpLoweringSSA : public mlir::OpRewritePattern<T>
 //            return mlir::failure();
         }
 
-        auto new_tensor = rewriter.create<mlir::TensorFromElementsOp>(loc, value);
+        auto new_tensor = rewriter.create<mlir::tensor::FromElementsOp>(loc, value);
         auto new_index = index_cast(index, loc, rewriter);
         mlir::Value one = rewriter.create<mlir::ConstantIndexOp>(loc, 1);
         auto new_value = rewriter.create<mlir::SubTensorInsertOp>(loc, new_tensor, target, new_index, one, one);
