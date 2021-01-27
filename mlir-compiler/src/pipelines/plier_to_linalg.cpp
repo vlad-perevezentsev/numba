@@ -223,9 +223,12 @@ mlir::LogicalResult call_rewrite(
         };
         mlir::StringRef iterators[] = { "parallel" };
 
+        auto dim = rewriter.create<mlir::DimOp>(loc, args[0], 0).getResult();
+        auto init_tensor = rewriter.create<mlir::linalg::InitTensorOp>(loc, dim, elem_type).getResult();
+
         auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
         {
-            assert(args.size() == 2);
+            assert(args.size() == 3);
             mlir::Value res = builder.create<mlir::AddIOp>(loc, args[0], args[1]);
             builder.create<mlir::linalg::YieldOp>(loc, res);
         };
@@ -233,7 +236,7 @@ mlir::LogicalResult call_rewrite(
             loc,
             mlir::TypeRange(res_type),
             mlir::ValueRange(inputs),
-            mlir::ValueRange(), // outputs
+            mlir::ValueRange(init_tensor),
             llvm::makeArrayRef(map),
             llvm::makeArrayRef(iterators),
             body).getResult(0);
