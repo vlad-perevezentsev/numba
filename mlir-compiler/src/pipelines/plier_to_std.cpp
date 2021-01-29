@@ -1286,6 +1286,8 @@ void PlierToStdPass::runOnOperation()
 
     mlir::populateStdExpandOpsPatterns(context, patterns);
 
+    // range/prange lowering need dead branch pruning to properly
+    // handle negative steps
     for (auto *op : context->getRegisteredOperations())
     {
         op->getCanonicalizationPatterns(patterns, context);

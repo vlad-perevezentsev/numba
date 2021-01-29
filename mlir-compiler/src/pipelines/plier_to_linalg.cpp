@@ -536,6 +536,8 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
 
 void PlierToLinalgPass::runOnOperation()
 {
+    auto context = &getContext();
+
     mlir::TypeConverter type_converter;
     // Convert unknown types to itself
     type_converter.addConversion([](mlir::Type type) { return type; });
@@ -554,17 +556,24 @@ void PlierToLinalgPass::runOnOperation()
     patterns.insert<
         FuncOpSignatureConversion,
         CastOpLowering
-        >(type_converter, &getContext());
+        >(type_converter, context);
 
     patterns.insert<
         CallOpLowering
-        >(type_converter, &getContext(), call_rewrite);
+        >(type_converter, context, call_rewrite);
 
     patterns.insert<
         GetitemOpLowering<plier::GetItemOp>,
         GetitemOpLowering<plier::StaticGetItemOp>,
         SetitemOpLowering<plier::SetItemOp>
         >(&getContext());
+
+    // range/prange lowering need dead branch pruning to properly
+    // handle negative steps
+    for (auto *op : context->getRegisteredOperations())
+    {
+        op->getCanonicalizationPatterns(patterns, context);
+    }
 
     (void)mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }

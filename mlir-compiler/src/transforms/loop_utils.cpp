@@ -37,6 +37,7 @@ mlir::Value get_last_iter_value(
     auto inc = builder.create<mlir::MulIOp>(loc, count, step);
     return builder.create<mlir::AddIOp>(loc, lower_bound, inc);
 }
+
 }
 
 mlir::LogicalResult lower_while_to_for(
@@ -53,6 +54,24 @@ mlir::LogicalResult lower_while_to_for(
             to_process.emplace_back(while_op);
         }
     }
+
+    auto loc = getiter.getLoc();
+    mlir::Value zero_val;
+    auto get_zero_index = [&]()
+    {
+        if (!zero_val)
+        {
+            mlir::OpBuilder::InsertionGuard guard(builder);
+            builder.setInsertionPoint(getiter);
+            zero_val = builder.create<mlir::ConstantIndexOp>(loc, 0);
+        }
+        return zero_val;
+    };
+
+    auto get_neg = [&](mlir::Value value)
+    {
+        return builder.create<mlir::SubIOp>(loc, get_zero_index(), value);
+    };
 
     bool changed = false;
     for (auto while_op : to_process)
@@ -81,35 +100,6 @@ mlir::LogicalResult lower_while_to_for(
 
         auto& after_block = while_op.after().front();
 
-        auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Value iv, mlir::ValueRange iterargs)
-        {
-            mlir::BlockAndValueMapping mapper;
-            assert(before_block.getNumArguments() == iterargs.size());
-            assert(after_block.getNumArguments() == before_term.args().size());
-            mapper.map(before_block.getArguments(), iterargs);
-            for (auto it : llvm::zip(after_block.getArguments(), before_term.args()))
-            {
-                auto block_arg = std::get<0>(it);
-                auto term_arg = std::get<1>(it);
-                if (pairfirst && term_arg == pairfirst) // iter arg
-                {
-                    auto iter_val = get_iter_val(builder, loc, pairfirst.getType(), iv);
-                    mapper.map(block_arg, iter_val);
-                }
-                else
-                {
-                    mapper.map(block_arg, mapper.lookupOrDefault(term_arg));
-                }
-            }
-
-            for (auto& op : after_block) // with terminator
-            {
-                builder.clone(op, mapper);
-            }
-        };
-
-        auto loc = getiter.getLoc();
-
         auto index_cast = [&](mlir::Value val)->mlir::Value
         {
             if (!val.getType().isa<mlir::IndexType>())
@@ -120,19 +110,92 @@ mlir::LogicalResult lower_while_to_for(
         };
 
         auto bounds = get_bounds(builder, loc);
-        auto lower_bound = index_cast(std::get<0>(bounds));
-        auto upper_bound = index_cast(std::get<1>(bounds));
-        auto step = index_cast(std::get<2>(bounds));
+        auto orig_lower_bound = index_cast(std::get<0>(bounds));
+        auto orig_upper_bound = index_cast(std::get<1>(bounds));
+        auto orig_step = index_cast(std::get<2>(bounds));
+
+        // scf::ForOp/ParallelOp doesn't support negative step, so generate
+        // IfOp and 2 version for different step signs
+        // branches for const steps will be pruned later
+        auto gen_for = [&](bool positive)
+        {
+            auto get_loop_body_builder = [&](bool positive)
+            {
+                return [&, positive](mlir::OpBuilder& builder, mlir::Location loc, mlir::Value iv, mlir::ValueRange iterargs)
+                {
+                    if (!positive)
+                    {
+                        iv = get_neg(iv);
+                    }
+                    mlir::BlockAndValueMapping mapper;
+                    assert(before_block.getNumArguments() == iterargs.size());
+                    assert(after_block.getNumArguments() == before_term.args().size());
+                    mapper.map(before_block.getArguments(), iterargs);
+                    for (auto it : llvm::zip(after_block.getArguments(), before_term.args()))
+                    {
+                        auto block_arg = std::get<0>(it);
+                        auto term_arg = std::get<1>(it);
+                        if (pairfirst && term_arg == pairfirst) // iter arg
+                        {
+                            auto iter_val = get_iter_val(builder, loc, pairfirst.getType(), iv);
+                            mapper.map(block_arg, iter_val);
+                        }
+                        else
+                        {
+                            mapper.map(block_arg, mapper.lookupOrDefault(term_arg));
+                        }
+                    }
+
+                    for (auto& op : after_block) // with terminator
+                    {
+                        builder.clone(op, mapper);
+                    }
+                };
+            };
+
+            auto lower_bound = orig_lower_bound;
+            auto upper_bound = orig_upper_bound;
+            auto step = orig_step;
+
+            if (!positive)
+            {
+                lower_bound = get_neg(lower_bound);
+                upper_bound = get_neg(upper_bound);
+                step = get_neg(step);
+            }
+
+            return builder.create<mlir::scf::ForOp>(
+                loc,
+                lower_bound,
+                upper_bound,
+                step,
+                while_op.getOperands(), // iterArgs
+                get_loop_body_builder(positive)
+                );
+        };
+
+
+        auto get_if_body_builder = [&](bool positive)
+        {
+            return [&, positive](mlir::OpBuilder& builder, mlir::Location loc)
+            {
+                auto loop_op = gen_for(positive);
+                if (results)
+                {
+                    results(loop_op);
+                }
+                builder.create<mlir::scf::YieldOp>(loc, loop_op.getResults());
+            };
+        };
 
         builder.setInsertionPoint(while_op);
-        auto loop_op = builder.create<mlir::scf::ForOp>(
+        auto step_sign = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::sge, orig_step, get_zero_index());
+        auto loop_op = builder.create<mlir::scf::IfOp>(
             loc,
-            lower_bound,
-            upper_bound,
-            step,
-            while_op.getOperands(), // iterArgs
-            body
-            );
+            while_op.getOperands().getTypes(),
+            step_sign,
+            get_if_body_builder(true),
+            get_if_body_builder(false));
 
         assert(while_op.getNumResults() >= loop_op.getNumResults());
         builder.updateRootInPlace(while_op, [&]()
@@ -155,7 +218,7 @@ mlir::LogicalResult lower_while_to_for(
                 }
                 if (pairfirst && operand == pairfirst && !old_res.getUsers().empty())
                 {
-                    auto val = get_last_iter_value(builder, loc, lower_bound, upper_bound, step);
+                    auto val = get_last_iter_value(builder, loc, orig_lower_bound, orig_upper_bound, orig_step);
                     auto new_res = builder.create<plier::CastOp>(loc, old_res.getType(), val);
                     old_res.replaceAllUsesWith(new_res);
                 }
@@ -166,11 +229,6 @@ mlir::LogicalResult lower_while_to_for(
         assert(while_op.getOperation()->getUsers().empty());
         builder.eraseOp(while_op);
         changed = true;
-
-        if (results)
-        {
-            results(loop_op);
-        }
     }
 
     if (getiter.getOperation()->getUsers().empty())
