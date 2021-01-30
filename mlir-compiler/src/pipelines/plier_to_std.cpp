@@ -499,7 +499,12 @@ template<typename T>
 void replace_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)
 {
     assert(nullptr != op);
-    rewriter.replaceOpWithNewOp<T>(op, new_type, operands);
+    llvm::SmallVector<mlir::Value, 8> new_operands(operands.size());
+    for (auto it : llvm::enumerate(operands))
+    {
+        new_operands[it.index()] = do_cast(new_type, it.value(), rewriter);
+    }
+    rewriter.replaceOpWithNewOp<T>(op, new_type, new_operands);
 }
 
 void replace_itruediv_op(mlir::Operation* op, mlir::PatternRewriter& rewriter, mlir::Type new_type, mlir::ValueRange operands)

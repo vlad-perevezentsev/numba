@@ -19,8 +19,6 @@ public:
     PyFuncResolver();
     ~PyFuncResolver();
 
-    PyFuncResolver(const PyFuncResolver&) = delete;
-
     mlir::FuncOp get_func(llvm::StringRef name, mlir::TypeRange types);
 
 private:

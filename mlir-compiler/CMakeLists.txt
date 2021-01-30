@@ -35,6 +35,7 @@ set(SOURCES_LIST
     src/rewrites/canonicalize_reductions.cpp
     src/rewrites/cast_lowering.cpp
     src/rewrites/cse.cpp
+    src/rewrites/force_inline.cpp
     src/rewrites/promote_to_parallel.cpp
     src/rewrites/type_conversion.cpp
     src/transforms/func_utils.cpp
@@ -46,6 +47,8 @@ set(SOURCES_LIST
     src/mangle.cpp
     src/pipeline_registry.cpp
     src/py_func_resolver.cpp
+    src/py_linalg_resolver.cpp
+    src/py_map_types.cpp
     src/py_module.cpp
     src/utils.cpp
     )
@@ -61,6 +64,7 @@ set(HEADERS_LIST
     src/rewrites/canonicalize_reductions.hpp
     src/rewrites/cast_lowering.hpp
     src/rewrites/cse.hpp
+    src/rewrites/force_inline.hpp
     src/rewrites/promote_to_parallel.hpp
     src/rewrites/type_conversion.hpp
     src/transforms/func_utils.hpp
@@ -71,6 +75,8 @@ set(HEADERS_LIST
     src/mangle.hpp
     src/pipeline_registry.hpp
     src/py_func_resolver.hpp
+    src/py_linalg_resolver.hpp
+    src/py_map_types.hpp
     src/py_module.hpp
     src/utils.hpp
     )

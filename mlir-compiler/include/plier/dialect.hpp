@@ -32,6 +32,7 @@ llvm::StringRef getFastmathName();
 llvm::StringRef getJumpMarkersName();
 llvm::StringRef getParallelName();
 llvm::StringRef getMaxConcurrencyName();
+llvm::StringRef getForceInlineName();
 }
 
 namespace detail

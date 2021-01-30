@@ -30,7 +30,12 @@ llvm::StringRef attributes::getParallelName()
 
 llvm::StringRef attributes::getMaxConcurrencyName()
 {
-        return "#plier.max_concurrency";
+    return "#plier.max_concurrency";
+}
+
+llvm::StringRef attributes::getForceInlineName()
+{
+    return "#plier.force_inline";
 }
 
 

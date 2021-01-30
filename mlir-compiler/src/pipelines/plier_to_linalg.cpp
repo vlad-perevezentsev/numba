@@ -28,10 +28,12 @@
 #include "rewrites/cse.hpp"
 #include "rewrites/promote_to_parallel.hpp"
 #include "rewrites/type_conversion.hpp"
+#include "rewrites/force_inline.hpp"
 #include "transforms/loop_utils.hpp"
 
 #include "base_pipeline.hpp"
 #include "pipeline_registry.hpp"
+#include "py_linalg_resolver.hpp"
 
 #include <cctype>
 
@@ -194,99 +196,55 @@ mlir::LogicalResult lower_prange(plier::PyCallOp op, llvm::ArrayRef<mlir::Value>
     return mlir::success();
 }
 
-mlir::LogicalResult call_rewrite(
-    plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
-    mlir::PatternRewriter& rewriter)
+struct CallLowerer
 {
-    using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
-    std::pair<llvm::StringRef, func_t> handlers[] = {
-        {"numba.prange", lower_prange},
-    };
-    for (auto& handler : handlers)
+    mlir::LogicalResult operator()(
+        plier::PyCallOp op, llvm::StringRef name, llvm::ArrayRef<mlir::Value> args,
+        mlir::PatternRewriter& rewriter)
     {
-        if (handler.first == name)
+        using func_t = mlir::LogicalResult(*)(plier::PyCallOp, llvm::ArrayRef<mlir::Value>, mlir::PatternRewriter&);
+        std::pair<llvm::StringRef, func_t> handlers[] = {
+            {"numba.prange", lower_prange},
+        };
+        for (auto& handler : handlers)
         {
-            return handler.second(op, args, rewriter);
+            if (handler.first == name)
+            {
+                return handler.second(op, args, rewriter);
+            }
         }
-    }
 
-    if (name == "numpy.add" && check_numpy_args(args, 2))
-    {
-        auto loc = op.getLoc();
-        mlir::Value inputs[] = { args[0], args[1] };
-        auto elem_type = get_elem_type(args[0].getType());
-        mlir::Type res_type = mlir::RankedTensorType::get(-1, elem_type);
-        mlir::AffineMap map[] = {
-            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
-            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
-            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
-        };
-        mlir::StringRef iterators[] = { "parallel" };
-
-        auto dim = rewriter.create<mlir::DimOp>(loc, args[0], 0).getResult();
-        auto init_tensor = rewriter.create<mlir::linalg::InitTensorOp>(loc, dim, elem_type).getResult();
-
-        auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+        if (auto result = linalg_resolver.rewrite(name, op.getLoc(), rewriter, args))
         {
-            assert(args.size() == 3);
-            mlir::Value res = builder.create<mlir::AddIOp>(loc, args[0], args[1]);
-            builder.create<mlir::linalg::YieldOp>(loc, res);
-        };
-        auto res = rewriter.create<mlir::linalg::GenericOp>(
-            loc,
-            mlir::TypeRange(res_type),
-            mlir::ValueRange(inputs),
-            mlir::ValueRange(init_tensor),
-            llvm::makeArrayRef(map),
-            llvm::makeArrayRef(iterators),
-            body).getResult(0);
-        rewriter.replaceOp(op, res);
-        return mlir::success();
-    }
-    if (name == "array.sum" && check_numpy_args(args, 1))
-    {
-        auto loc = op.getLoc();
-        mlir::Value inputs[] = { args[0] };
-        auto elem_type = mlir::IntegerType::get(op.getContext(), 64);
-        auto res_type = mlir::RankedTensorType::get(1, elem_type);
-        mlir::Value zero = rewriter.create<mlir::ConstantOp>(loc, get_zero(elem_type));
-        mlir::Value init = rewriter.create<mlir::tensor::FromElementsOp>(loc, zero);
-        mlir::AffineMap map[] = {
-            mlir::AffineMap::getMultiDimIdentityMap(1, op.getContext()),
-            mlir::AffineMap::get(1, 0, mlir::getAffineConstantExpr(0, op.getContext())),
-        };
-        mlir::StringRef iterators[] = { "reduction" };
-        auto body = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+            assert(result->size() == op->getNumResults());
+            rerun_std_pipeline(op);
+            if (result->empty())
+            {
+                rewriter.eraseOp(op);
+            }
+            else
+            {
+                rewriter.replaceOp(op, *result);
+            }
+            return mlir::success();
+        }
+
+        if (name == "len" && check_numpy_args(args, 1))
         {
-            assert(args.size() == 2);
-            auto val = builder.create<mlir::SignExtendIOp>(loc, args[0], elem_type);
-            mlir::Value res = builder.create<mlir::AddIOp>(loc, val, args[1]);
-            builder.create<mlir::linalg::YieldOp>(loc, res);
-        };
-        auto val = rewriter.create<mlir::linalg::GenericOp>(
-            loc,
-            mlir::TypeRange(res_type),
-            mlir::ValueRange(inputs),
-            mlir::ValueRange(init), // outputs
-            llvm::makeArrayRef(map),
-            llvm::makeArrayRef(iterators),
-            body).getResult(0);
-        mlir::Value index = rewriter.create<mlir::ConstantIndexOp>(loc, 0);
-        mlir::Value res = rewriter.create<mlir::tensor::ExtractOp>(loc, val, index);
-        rewriter.replaceOp(op, res);
-        return mlir::success();
+            auto loc = op.getLoc();
+            mlir::Value dim = rewriter.create<mlir::DimOp>(loc, args[0], 0);
+            mlir::Value res = rewriter.create<plier::CastOp>(loc, op.getType(), dim);
+            rerun_std_pipeline(op);
+            rewriter.replaceOp(op, res);
+            return mlir::success();
+        }
+        return mlir::failure();
     }
-    if (name == "len" && check_numpy_args(args, 1))
-    {
-        auto loc = op.getLoc();
-        mlir::Value dim = rewriter.create<mlir::DimOp>(loc, args[0], 0);
-        mlir::Value res = rewriter.create<plier::CastOp>(loc, op.getType(), dim);
-        rerun_std_pipeline(op);
-        rewriter.replaceOp(op, res);
-        return mlir::success();
-    }
-    return mlir::failure();
-}
+
+private:
+
+    PyLinalgResolver linalg_resolver;
+};
 
 template<typename T>
 struct GetitemOpLowering : public mlir::OpRewritePattern<T>
@@ -558,14 +516,17 @@ void PlierToLinalgPass::runOnOperation()
         CastOpLowering
         >(type_converter, context);
 
+    CallLowerer callLowerer;
+
     patterns.insert<
         CallOpLowering
-        >(type_converter, context, call_rewrite);
+        >(type_converter, context, callLowerer);
 
     patterns.insert<
         GetitemOpLowering<plier::GetItemOp>,
         GetitemOpLowering<plier::StaticGetItemOp>,
-        SetitemOpLowering<plier::SetItemOp>
+        SetitemOpLowering<plier::SetItemOp>,
+        ForceInline
         >(&getContext());
 
     // range/prange lowering need dead branch pruning to properly
