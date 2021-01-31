@@ -28,7 +28,10 @@ namespace
 {
 bool is_compatible_types(mlir::TypeRange types)
 {
-    return !types.empty() && llvm::all_of(types, [](mlir::Type t){ return t.isa<mlir::RankedTensorType>(); });
+    return !types.empty() && llvm::all_of(types, [](mlir::Type t)
+    {
+        return t.isIntOrFloat() || t.isa<mlir::RankedTensorType>();
+    });
 }
 
 py::handle get_dim(int64_t val)
@@ -140,7 +143,7 @@ struct PyLinalgResolver::Context
             }
             return var(wrap_mlir(value), py_shape, wrap_mlir(elem_type));
         }
-        return var(wrap_mlir(value), py::none(), wrap_mlir(value.getType()));
+        return var(wrap_mlir(value), py::list(), wrap_mlir(value.getType()));
     }
 
     mlir::FuncOp compile_body(py::handle body, py::list arg_types)
@@ -238,7 +241,14 @@ auto get_generic_op_body_types(mlir::ValueRange inputs, mlir::ValueRange outputs
     {
         for (auto type : r.getTypes())
         {
-            auto elem_type = type.cast<mlir::RankedTensorType>().getElementType();
+            auto elem_type = [&]()
+            {
+                if (auto tensor = type.dyn_cast<mlir::RankedTensorType>())
+                {
+                    return tensor.getElementType();
+                }
+                return type;
+            }();
             ret.emplace_back(elem_type);
         }
     }
@@ -257,6 +267,19 @@ auto generic_op_body_result_types(mlir::ValueRange outputs)
     return ret;
 }
 
+mlir::Attribute zero_attr(mlir::Type type)
+{
+    if (type.isa<mlir::IntegerType>())
+    {
+        return mlir::IntegerAttr::get(type, 0);
+    }
+    if (type.isa<mlir::FloatType>())
+    {
+        return mlir::FloatAttr::get(type, 0.0);
+    }
+    report_error("zero_attr: unhandled type");
+}
+
 py::object broadcast_impl(py::capsule /*context*/, py::tuple args)
 {
     if (1 == args.size())
@@ -273,61 +296,81 @@ py::object init_tensor_impl(py::capsule context, py::list shape, py::capsule dty
 {
     auto& ctx = get_py_context(context);
     auto elem_type = unwrap_mlir<mlir::Type>(dtype);
-    auto init = ctx.builder.create<mlir::linalg::InitTensorOp>(ctx.loc, unwrap_shape(shape), elem_type);
+    mlir::Value init;
+    if (shape.empty())
+    {
+        // TODO: undef
+        init = ctx.builder.create<mlir::ConstantOp>(ctx.loc, zero_attr(elem_type));
+    }
+    else
+    {
+        init = ctx.builder.create<mlir::linalg::InitTensorOp>(ctx.loc, unwrap_shape(shape), elem_type);
+    }
     return ctx.context.create_var(ctx.loc, ctx.builder, init);
 }
 
 py::object generic_impl(py::capsule context, py::handle inputs, py::handle outputs, py::list iterators, py::list maps, py::handle body)
 {
     auto& ctx = get_py_context(context);
+    auto loc = ctx.loc;
     auto& builder = ctx.builder;
     auto& mlir_context = *builder.getContext();
 
     auto inputs_args = get_agrs_from_tuple(inputs);
     auto output_args = get_agrs_from_tuple(outputs);
     auto ret_types = get_types(output_args);
-    auto affine_maps = get_affine_maps(maps, mlir_context);
     auto mlir_iterators = get_iterators(iterators, mlir_context);
 
     auto func_types = map_types_to_numba(ctx.context.types_mod, get_generic_op_body_types(inputs_args, output_args));
     auto body_func = ctx.context.compile_body(body, func_types);
-    auto body_builder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
-    {
-        auto cast_values = [&](mlir::ValueRange vals, mlir::TypeRange types)
-        {
-            assert(vals.size() == types.size());
-            llvm::SmallVector<mlir::Value, 8> ret(vals.size());
-            auto do_cast = [&](mlir::Value val, mlir::Type type)
-            {
-                if (val.getType() == type)
-                {
-                    return val;
-                }
-                return builder.create<plier::CastOp>(loc, type, val).getResult();
-            };
-            for (auto it : llvm::enumerate(vals))
-            {
-                auto index = static_cast<unsigned>(it.index());
-                ret[index] = do_cast(it.value(), types[index]);
-            }
-            return ret;
-        };
-        auto func_type = body_func.getType();
-        auto new_args = cast_values(args, func_type.getInputs());
-        auto call = builder.create<mlir::CallOp>(loc, body_func, new_args);
-        auto new_results = cast_values(call.getResults(), generic_op_body_result_types(output_args));
-        builder.create<mlir::linalg::YieldOp>(loc, new_results);
-    };
 
-    auto generic_op = builder.create<mlir::linalg::GenericOp>(
-        ctx.loc,
-        ret_types,
-        inputs_args,
-        output_args,
-        affine_maps,
-        mlir_iterators,
-        body_builder);
-    return ctx.context.wrap_result(ctx.loc, builder, generic_op.getResults());
+    auto cast_values = [&](mlir::ValueRange vals, mlir::TypeRange types)
+    {
+        assert(vals.size() == types.size());
+        llvm::SmallVector<mlir::Value, 8> ret(vals.size());
+        auto do_cast = [&](mlir::Value val, mlir::Type type)
+        {
+            if (val.getType() == type)
+            {
+                return val;
+            }
+            return builder.create<plier::CastOp>(loc, type, val).getResult();
+        };
+        for (auto it : llvm::enumerate(vals))
+        {
+            auto index = static_cast<unsigned>(it.index());
+            ret[index] = do_cast(it.value(), types[index]);
+        }
+        return ret;
+    };
+    if (mlir_iterators.empty())
+    {
+        inputs_args.append(output_args.begin(), output_args.end());
+        auto res = builder.create<mlir::CallOp>(loc, body_func, inputs_args);
+        return ctx.context.wrap_result(loc, builder, cast_values(res.getResults(), ret_types));
+    }
+    else
+    {
+        auto affine_maps = get_affine_maps(maps, mlir_context);
+        auto body_builder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange args)
+        {
+            auto func_type = body_func.getType();
+            auto new_args = cast_values(args, func_type.getInputs());
+            auto call = builder.create<mlir::CallOp>(loc, body_func, new_args);
+            auto new_results = cast_values(call.getResults(), generic_op_body_result_types(output_args));
+            builder.create<mlir::linalg::YieldOp>(loc, new_results);
+        };
+
+        auto generic_op = builder.create<mlir::linalg::GenericOp>(
+            loc,
+            ret_types,
+            inputs_args,
+            output_args,
+            affine_maps,
+            mlir_iterators,
+            body_builder);
+        return ctx.context.wrap_result(loc, builder, generic_op.getResults());
+    }
 }
 
 py::object from_elements_impl(py::capsule context, py::handle values, py::capsule dtype)
