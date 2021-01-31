@@ -295,6 +295,7 @@ private:
         using func_t = mlir::Value (plier_lowerer::*)(const py::handle&);
         const std::pair<mlir::StringRef, func_t> handlers[] = {
             {"binop", &plier_lowerer::lower_binop},
+            {"inplace_binop", &plier_lowerer::lower_inplce_binop},
             {"unary", &plier_lowerer::lower_unary},
             {"cast", &plier_lowerer::lower_cast},
             {"call", &plier_lowerer::lower_call},
@@ -420,6 +421,17 @@ private:
     mlir::Value lower_binop(const py::handle& expr)
     {
         auto op = expr.attr("fn");
+        auto lhs_name = expr.attr("lhs");
+        auto rhs_name = expr.attr("rhs");
+        auto lhs = loadvar(lhs_name);
+        auto rhs = loadvar(rhs_name);
+        auto op_name = resolve_op(op);
+        return builder.create<plier::BinOp>(get_current_loc(), lhs, rhs, op_name);
+    }
+
+    mlir::Value lower_inplce_binop(const py::handle& expr)
+    {
+        auto op = expr.attr("immutable_fn");
         auto lhs_name = expr.attr("lhs");
         auto rhs_name = expr.attr("rhs");
         auto lhs = loadvar(lhs_name);
