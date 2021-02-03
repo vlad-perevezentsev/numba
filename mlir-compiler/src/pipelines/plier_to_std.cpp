@@ -1115,6 +1115,25 @@ mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> 
     return mlir::success();
 }
 
+mlir::LogicalResult lower_len(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
+{
+    if (operands.size() != 1)
+    {
+        return mlir::failure();
+    }
+
+    auto build_tuple = operands[0].getDefiningOp<plier::BuildTupleOp>();
+    if (!build_tuple)
+    {
+        return mlir::failure();
+    }
+
+    auto size = rewriter.create<mlir::ConstantIndexOp>(op.getLoc(), build_tuple.getNumOperands());
+    auto cast = rewriter.create<plier::CastOp>(op.getLoc(), op.getType(), size);
+    rewriter.replaceOp(op, cast.getResult());
+    return mlir::success();
+}
+
 mlir::LogicalResult lower_bool_cast(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
 {
     if (operands.size() != 1)
@@ -1199,6 +1218,7 @@ struct CallLowerer
         std::pair<llvm::StringRef, func_t> handlers[] = {
             {"bool", lower_bool_cast},
             {"range", lower_range},
+            {"len", lower_len},
         };
         for (auto& handler : handlers)
         {

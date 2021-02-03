@@ -201,11 +201,37 @@ void BuildTupleOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 //    return mlir::failure();
 //}
 
+mlir::Value fold_build_tuple_getitem(mlir::Value val, llvm::ArrayRef<mlir::Attribute> operands)
+{
+    auto build_tuple = val.getDefiningOp<plier::BuildTupleOp>();
+    if (build_tuple)
+    {
+        if (auto val = operands[1].dyn_cast_or_null<mlir::IntegerAttr>())
+        {
+            auto index = val.getInt();
+            if (index >= 0 && index < build_tuple.getNumOperands())
+            {
+                return build_tuple.getOperand(static_cast<unsigned>(index));
+            }
+        }
+    }
+    return {};
+}
+
 void GetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value, ::mlir::Value index)
 {
     GetItemOp::build(builder, state,
                      PyType::getUndefined(state.getContext()), value, index);
+}
+
+mlir::OpFoldResult GetItemOp::fold(llvm::ArrayRef<mlir::Attribute> operands)
+{
+    if (auto val = fold_build_tuple_getitem(value(), operands))
+    {
+        return val;
+    }
+    return nullptr;
 }
 
 void StaticGetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
@@ -217,17 +243,14 @@ void StaticGetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &stat
                            value, index_var, index);
 }
 
-//mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> /*operands*/)
-//{
-//    auto index = this->index();
-//    auto args = getOperands();
-//    if ((index + 1) < args.size() && // skip last arg
-//        args[index].getType() == getResult().getType())
-//    {
-//        return args[index];
-//    }
-//    return nullptr;
-//}
+mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> operands)
+{
+    if (auto val = fold_build_tuple_getitem(value(), operands))
+    {
+        return val;
+    }
+    return nullptr;
+}
 
 void GetiterOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                             ::mlir::Value value)

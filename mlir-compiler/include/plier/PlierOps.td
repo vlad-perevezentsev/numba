@@ -121,6 +121,7 @@ def GetItemOp : Plier_Op<"getitem", []> {
                      AnyType:$index);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
         OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::Value":$index)>
@@ -134,6 +135,7 @@ def StaticGetItemOp : Plier_Op<"static_getitem", []> {
                      UI32Attr:$index);
 
     let results = (outs AnyType);
+    let hasFolder = 1;
 
     let builders = [
         OpBuilderDAG<(ins "::mlir::Value":$value, "::mlir::Value":$index_var, "unsigned":$index)>

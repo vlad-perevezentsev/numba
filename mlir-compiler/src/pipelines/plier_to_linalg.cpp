@@ -492,6 +492,46 @@ struct SetitemOpLowering : public mlir::OpRewritePattern<T>
     }
 };
 
+struct ArrayShape : public mlir::OpRewritePattern<plier::GetattrOp>
+{
+    ArrayShape(mlir::TypeConverter& type_converter,
+               mlir::MLIRContext* context):
+        OpRewritePattern(context),
+        converter(type_converter) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        plier::GetattrOp op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto type = op.value().getType().dyn_cast<mlir::ShapedType>();
+        if (!type || op.name() != "shape" || !type.hasRank())
+        {
+            return mlir::failure();
+        }
+
+        auto rank = static_cast<size_t>(type.getRank());
+        auto elem_type = converter.convertType(op.getType()).dyn_cast_or_null<mlir::TupleType>();
+        if (!elem_type || elem_type.size() != rank)
+        {
+            return mlir::failure();
+        }
+
+        llvm::SmallVector<mlir::Value, 8> dims(rank);
+        for (size_t i = 0; i < rank; ++i)
+        {
+            auto dim = rewriter.create<mlir::DimOp>(op.getLoc(), op.value(), i);
+            dims[i] = rewriter.create<plier::CastOp>(op.getLoc(), elem_type.getType(i), dim);
+        }
+        auto res = rewriter.create<plier::BuildTupleOp>(op.getLoc(), op.getType(), dims);
+        rerun_std_pipeline(op);
+        rewriter.replaceOp(op, res.getResult());
+        return mlir::success();
+    }
+
+private:
+    mlir::TypeConverter& converter;
+};
+
+
 void PlierToLinalgPass::runOnOperation()
 {
     auto context = &getContext();
@@ -513,7 +553,8 @@ void PlierToLinalgPass::runOnOperation()
     mlir::OwningRewritePatternList patterns;
     patterns.insert<
         FuncOpSignatureConversion,
-        CastOpLowering
+        CastOpLowering,
+        ArrayShape
         >(type_converter, context);
 
     CallLowerer callLowerer;
