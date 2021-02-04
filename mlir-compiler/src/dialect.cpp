@@ -201,7 +201,7 @@ void BuildTupleOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 //    return mlir::failure();
 //}
 
-mlir::Value fold_build_tuple_getitem(mlir::Value val, llvm::ArrayRef<mlir::Attribute> operands)
+mlir::Value fold_build_tuple_getitem(mlir::Value val, mlir::Type type, llvm::ArrayRef<mlir::Attribute> operands)
 {
     auto build_tuple = val.getDefiningOp<plier::BuildTupleOp>();
     if (build_tuple)
@@ -211,7 +211,11 @@ mlir::Value fold_build_tuple_getitem(mlir::Value val, llvm::ArrayRef<mlir::Attri
             auto index = val.getInt();
             if (index >= 0 && index < build_tuple.getNumOperands())
             {
-                return build_tuple.getOperand(static_cast<unsigned>(index));
+                auto op = build_tuple.getOperand(static_cast<unsigned>(index));
+                if (op.getType() == type)
+                {
+                    return op;
+                }
             }
         }
     }
@@ -227,7 +231,7 @@ void GetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 
 mlir::OpFoldResult GetItemOp::fold(llvm::ArrayRef<mlir::Attribute> operands)
 {
-    if (auto val = fold_build_tuple_getitem(value(), operands))
+    if (auto val = fold_build_tuple_getitem(value(), getType(), operands))
     {
         return val;
     }
@@ -245,7 +249,7 @@ void StaticGetItemOp::build(mlir::OpBuilder &builder, mlir::OperationState &stat
 
 mlir::OpFoldResult StaticGetItemOp::fold(llvm::ArrayRef<mlir::Attribute> operands)
 {
-    if (auto val = fold_build_tuple_getitem(value(), operands))
+    if (auto val = fold_build_tuple_getitem(value(), getType(), operands))
     {
         return val;
     }

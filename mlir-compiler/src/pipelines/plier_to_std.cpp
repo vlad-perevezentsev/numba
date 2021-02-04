@@ -18,6 +18,7 @@
 #include "rewrites/call_lowering.hpp"
 #include "rewrites/cast_lowering.hpp"
 #include "rewrites/type_conversion.hpp"
+#include "transforms/const_utils.hpp"
 #include "transforms/func_utils.hpp"
 #include "transforms/loop_utils.hpp"
 
@@ -1080,6 +1081,36 @@ struct FixupWhileTypes : public mlir::OpRewritePattern<mlir::scf::WhileOp>
     }
 };
 
+template<typename Op>
+struct FoldTupleGetitem : public mlir::OpRewritePattern<Op>
+{
+    FoldTupleGetitem(mlir::TypeConverter &/*typeConverter*/,
+                     mlir::MLIRContext *context):
+        OpRewritePattern(context) {}
+
+    mlir::LogicalResult matchAndRewrite(
+        Op op, mlir::PatternRewriter &rewriter) const override
+    {
+        auto build_tuple = op.value().template getDefiningOp<plier::BuildTupleOp>();
+        if (!build_tuple)
+        {
+            return mlir::failure();
+        }
+
+        if (auto val = getConstVal<mlir::IntegerAttr>(op.getOperand(1)))
+        {
+            auto index = val.getInt();
+            if (index >= 0 && index < build_tuple.getNumOperands())
+            {
+                auto val = build_tuple.getOperand(static_cast<unsigned>(index));
+                rewriter.replaceOp(op, val);
+                return mlir::success();
+            }
+        }
+        return mlir::failure();
+    }
+};
+
 mlir::LogicalResult lower_range(plier::PyCallOp op, llvm::ArrayRef<mlir::Value> operands, mlir::PatternRewriter& rewriter)
 {
     if ((operands.size() < 1 || operands.size() > 3) ||
@@ -1296,7 +1327,9 @@ void PlierToStdPass::runOnOperation()
         UnaryOpLowering,
         ScfIfRewrite,
         ScfWhileRewrite,
-        FixupWhileTypes
+        FixupWhileTypes,
+        FoldTupleGetitem<plier::GetItemOp>,
+        FoldTupleGetitem<plier::StaticGetItemOp>
         >(type_converter, context);
 
     patterns.insert<
