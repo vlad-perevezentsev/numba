@@ -15,7 +15,7 @@ template<typename Op>
 struct CSERewrite : public mlir::OpRewritePattern<Op>
 {
     CSERewrite(mlir::MLIRContext *context):
-        OpRewritePattern(context, /*benefit*/0) {}
+        OpRewritePattern(context, /*benefit*/1) {} // TODO: benefit=0
 
     mlir::LogicalResult matchAndRewrite(
         Op op, mlir::PatternRewriter &rewriter) const override
