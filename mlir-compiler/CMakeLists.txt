@@ -36,8 +36,11 @@ set(SOURCES_LIST
     src/rewrites/cast_lowering.cpp
     src/rewrites/cse.cpp
     src/rewrites/force_inline.cpp
+    src/rewrites/index_type_propagation.cpp
+    src/rewrites/loop_rewrites.cpp
     src/rewrites/promote_to_parallel.cpp
     src/rewrites/type_conversion.cpp
+    src/transforms/cast_utils.cpp
     src/transforms/const_utils.cpp
     src/transforms/func_utils.cpp
     src/transforms/loop_utils.cpp
@@ -66,8 +69,11 @@ set(HEADERS_LIST
     src/rewrites/cast_lowering.hpp
     src/rewrites/cse.hpp
     src/rewrites/force_inline.hpp
+    src/rewrites/index_type_propagation.hpp
+    src/rewrites/loop_rewrites.hpp
     src/rewrites/promote_to_parallel.hpp
     src/rewrites/type_conversion.hpp
+    src/transforms/cast_utils.hpp
     src/transforms/const_utils.hpp
     src/transforms/func_utils.hpp
     src/transforms/loop_utils.hpp

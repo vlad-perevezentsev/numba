@@ -10,6 +10,8 @@
 
 #include "plier/dialect.hpp"
 
+#include "transforms/cast_utils.hpp"
+
 namespace
 {
 template<typename Op>
@@ -102,11 +104,7 @@ mlir::LogicalResult lower_while_to_for(
 
         auto index_cast = [&](mlir::Value val)->mlir::Value
         {
-            if (!val.getType().isa<mlir::IndexType>())
-            {
-                return builder.create<mlir::IndexCastOp>(loc, val, mlir::IndexType::get(val.getContext()));
-            }
-            return val;
+            return ::index_cast(builder, loc, val);
         };
 
         auto bounds = get_bounds(builder, loc);

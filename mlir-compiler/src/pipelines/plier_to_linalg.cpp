@@ -29,6 +29,9 @@
 #include "rewrites/promote_to_parallel.hpp"
 #include "rewrites/type_conversion.hpp"
 #include "rewrites/force_inline.hpp"
+#include "rewrites/index_type_propagation.hpp"
+#include "rewrites/loop_rewrites.hpp"
+
 #include "transforms/loop_utils.hpp"
 
 #include "base_pipeline.hpp"
@@ -112,33 +115,6 @@ bool check_numpy_args(llvm::ArrayRef<mlir::Value> args, unsigned expected_count)
         }
     }
     return true;
-}
-
-mlir::Attribute get_zero(mlir::Type type)
-{
-    assert(type);
-    if (auto int_type = type.dyn_cast<mlir::IntegerType>())
-    {
-        return mlir::IntegerAttr::get(type, 0);
-    }
-    if (auto float_type = type.dyn_cast<mlir::FloatType>())
-    {
-        return mlir::FloatAttr::get(type, 0.0);
-    }
-    llvm_unreachable("get_zero: usupported type");
-}
-
-mlir::Type get_elem_type(mlir::Type type)
-{
-    if (auto memref = type.dyn_cast<mlir::MemRefType>())
-    {
-        return memref.getElementType();
-    }
-    if (auto tensor = type.dyn_cast<mlir::TensorType>())
-    {
-        return tensor.getElementType();
-    }
-    llvm_unreachable("get_elem_type: unknown type");
 }
 
 void rerun_std_pipeline(mlir::Operation* op)
@@ -417,256 +393,6 @@ struct PlierToLinalgPass :
     void runOnOperation() override;
 };
 
-bool is_index_compatible(mlir::Type lhs_type, mlir::Type rhs_type)
-{
-    if (!lhs_type.isa<mlir::IntegerType>() || lhs_type != rhs_type)
-    {
-        return false;
-    }
-
-    if (lhs_type.cast<mlir::IntegerType>().getWidth() < 64)
-    {
-        return false;
-    }
-    return true;
-}
-
-template<typename Op>
-struct ArithIndexCastSimplify : public mlir::OpRewritePattern<Op>
-{
-    using mlir::OpRewritePattern<Op>::OpRewritePattern;
-
-    mlir::LogicalResult matchAndRewrite(
-        Op op, mlir::PatternRewriter &rewriter) const override
-    {
-        auto lhs_type = op.lhs().getType();
-        auto rhs_type = op.rhs().getType();
-        if (!is_index_compatible(lhs_type, rhs_type))
-        {
-            return mlir::failure();
-        }
-
-        auto get_cast = [](mlir::Value val)->mlir::Value
-        {
-            if (auto op = mlir::dyn_cast_or_null<mlir::IndexCastOp>(val.getDefiningOp()))
-            {
-                return op.getOperand();
-            }
-            return {};
-        };
-
-        auto get_const = [](mlir::Value val)->mlir::IntegerAttr
-        {
-            if (auto op = mlir::dyn_cast_or_null<mlir::ConstantOp>(val.getDefiningOp()))
-            {
-                return op.getValue().cast<mlir::IntegerAttr>();
-            }
-            return {};
-        };
-
-        auto lhs = get_cast(op.lhs());
-        auto rhs = get_cast(op.rhs());
-        auto lhs_const = get_const(op.lhs());
-        auto rhs_const = get_const(op.rhs());
-        if (lhs && rhs)
-        {
-            auto new_op = rewriter.create<Op>(op.getLoc(), lhs, rhs);
-            auto result = rewriter.create<mlir::IndexCastOp>(op.getLoc(), new_op.getResult(), lhs_type);
-            rewriter.replaceOp(op, result.getResult());
-            return mlir::success();
-        }
-        if (lhs && rhs_const)
-        {
-            auto new_const = rewriter.create<mlir::ConstantIndexOp>(op.getLoc(), rhs_const.getInt());
-            auto new_op = rewriter.create<Op>(op.getLoc(), lhs, new_const);
-            auto result = rewriter.create<mlir::IndexCastOp>(op.getLoc(), new_op.getResult(), lhs_type);
-            rewriter.replaceOp(op, result.getResult());
-            return mlir::success();
-        }
-        if (lhs_const && rhs)
-        {
-            auto new_const = rewriter.create<mlir::ConstantIndexOp>(op.getLoc(), lhs_const.getInt());
-            auto new_op = rewriter.create<Op>(op.getLoc(), new_const, rhs);
-            auto result = rewriter.create<mlir::IndexCastOp>(op.getLoc(), new_op.getResult(), lhs_type);
-            rewriter.replaceOp(op, result.getResult());
-            return mlir::success();
-        }
-
-        return mlir::failure();
-    }
-};
-
-struct CmpIndexCastSimplify : public mlir::OpRewritePattern<mlir::CmpIOp>
-{
-    using mlir::OpRewritePattern<mlir::CmpIOp>::OpRewritePattern;
-
-    mlir::LogicalResult matchAndRewrite(
-        mlir::CmpIOp op, mlir::PatternRewriter &rewriter) const override
-    {
-        auto lhs_type = op.lhs().getType();
-        auto rhs_type = op.rhs().getType();
-        if (!is_index_compatible(lhs_type, rhs_type))
-        {
-            return mlir::failure();
-        }
-
-        auto get_cast = [](mlir::Value val)->mlir::Value
-        {
-            if (auto op = mlir::dyn_cast_or_null<mlir::IndexCastOp>(val.getDefiningOp()))
-            {
-                return op.getOperand();
-            }
-            return {};
-        };
-
-        auto get_const = [](mlir::Value val)->mlir::IntegerAttr
-        {
-            if (auto op = mlir::dyn_cast_or_null<mlir::ConstantOp>(val.getDefiningOp()))
-            {
-                return op.getValue().cast<mlir::IntegerAttr>();
-            }
-            return {};
-        };
-
-        auto lhs = get_cast(op.lhs());
-        auto rhs = get_cast(op.rhs());
-        auto lhs_const = get_const(op.lhs());
-        auto rhs_const = get_const(op.rhs());
-        if (lhs && rhs)
-        {
-            auto new_cmp = rewriter.create<mlir::CmpIOp>(op.getLoc(), op.predicate(), lhs, rhs);
-            rewriter.replaceOp(op, new_cmp.getResult());
-            return mlir::success();
-        }
-        if (lhs && rhs_const)
-        {
-            auto new_const = rewriter.create<mlir::ConstantIndexOp>(op.getLoc(), rhs_const.getInt());
-            auto new_cmp = rewriter.create<mlir::CmpIOp>(op.getLoc(), op.predicate(), lhs, new_const);
-            rewriter.replaceOp(op, new_cmp.getResult());
-            return mlir::success();
-        }
-        if (lhs_const && rhs)
-        {
-            auto new_const = rewriter.create<mlir::ConstantIndexOp>(op.getLoc(), lhs_const.getInt());
-            auto new_cmp = rewriter.create<mlir::CmpIOp>(op.getLoc(), op.predicate(), new_const, rhs);
-            rewriter.replaceOp(op, new_cmp.getResult());
-            return mlir::success();
-        }
-
-        return mlir::failure();
-    }
-};
-
-struct CmpLoopBoundsSimplify : public mlir::OpRewritePattern<mlir::scf::ForOp>
-{
-    using mlir::OpRewritePattern<mlir::scf::ForOp>::OpRewritePattern;
-
-    mlir::LogicalResult matchAndRewrite(
-        mlir::scf::ForOp op, mlir::PatternRewriter &rewriter) const override
-    {
-        auto index_var = op.getLoopBody().front().getArgument(0);
-        if (auto step_var = mlir::dyn_cast_or_null<mlir::ConstantOp>(op.step().getDefiningOp()))
-        {
-            assert(step_var.value().cast<mlir::IntegerAttr>().getInt() > 0);
-        }
-        bool matched = false;
-        for (auto user : llvm::make_early_inc_range(index_var.getUsers()))
-        {
-            auto cmp = mlir::dyn_cast<mlir::CmpIOp>(user);
-            if (cmp)
-            {
-                auto pred = cmp.predicate();
-                auto lhs = cmp.lhs();
-                auto rhs = cmp.rhs();
-                // Normalize index and predicate (index always on the left)
-                using norm_fptr_t = bool(*)(mlir::CmpIPredicate& pred, mlir::Value index, mlir::Value& lhs, mlir::Value& rhs);
-                using Predicate = mlir::CmpIPredicate;
-                const norm_fptr_t norm_handlers[] = {
-                    &norm_impl<Predicate::sle, Predicate::sge>,
-                    &norm_impl<Predicate::slt, Predicate::sgt>,
-                    &norm_impl<Predicate::ule, Predicate::uge>,
-                    &norm_impl<Predicate::ult, Predicate::ugt>,
-                    &norm_impl<Predicate::eq, Predicate::eq>,
-                    &norm_impl<Predicate::ne, Predicate::ne>,
-                };
-
-                for (auto h : norm_handlers)
-                {
-                    if (h(pred, index_var, lhs, rhs))
-                    {
-                        break;
-                    }
-                }
-
-                using fptr_t = llvm::Optional<int64_t>(*)(Predicate pred, mlir::Value lhs, mlir::Value rhs, mlir::Value index, mlir::Value lowerBound, mlir::Value upperBound);
-                const fptr_t handlers[] = {
-                    &handler_impl<Predicate::sge, UpperBound, 0>,
-                    &handler_impl<Predicate::slt, LowerBound, 0>,
-                    &handler_impl<Predicate::sge, LowerBound, 1>,
-                    &handler_impl<Predicate::slt, UpperBound, 1>,
-                };
-
-                for (auto h : handlers)
-                {
-                    if (auto c = h(pred, lhs, rhs, index_var, op.lowerBound(), op.upperBound()))
-                    {
-                        auto type = rewriter.getI1Type();
-                        auto val = rewriter.getIntegerAttr(type, *c);
-                        auto const_val = rewriter.create<mlir::ConstantOp>(cmp.getLoc(), val);
-                        rewriter.replaceOp(cmp, const_val.getResult());
-                        matched = true;
-                        break;
-                    }
-                }
-            }
-        }
-        return mlir::success(matched);
-    }
-
-private:
-    template<mlir::CmpIPredicate SrcPred, mlir::CmpIPredicate DstPred>
-    static bool norm_impl2(mlir::CmpIPredicate& pred, mlir::Value index, mlir::Value& lhs, mlir::Value& rhs)
-    {
-        if (pred != SrcPred)
-        {
-            return false;
-        }
-        if (index != lhs)
-        {
-            std::swap(lhs, rhs);
-            pred = DstPred;
-        }
-        return true;
-    }
-
-    template<mlir::CmpIPredicate SrcPred, mlir::CmpIPredicate DstPred>
-    static bool norm_impl(mlir::CmpIPredicate& pred, mlir::Value index, mlir::Value& lhs, mlir::Value& rhs)
-    {
-        return norm_impl2<SrcPred, DstPred>(pred, index, lhs, rhs) ||
-               norm_impl2<DstPred, SrcPred>(pred, index, lhs, rhs);
-    }
-
-    enum EBound
-    {
-        LowerBound,
-        UpperBound,
-    };
-    template<mlir::CmpIPredicate Pred, EBound Bound, int64_t Value>
-    static llvm::Optional<int64_t> handler_impl(mlir::CmpIPredicate pred, mlir::Value lhs, mlir::Value rhs, mlir::Value index, mlir::Value lowerBound, mlir::Value upperBound)
-    {
-        if (pred != Pred)
-        {
-            return {};
-        }
-        auto bound = (Bound == LowerBound ? lowerBound : upperBound);
-        if(rhs == bound && lhs == index)
-        {
-            return Value;
-        }
-        return {};
-    }
-};
-
 template<typename T>
 struct SetitemOpLowering : public mlir::OpRewritePattern<T>
 {
@@ -909,17 +635,11 @@ void PostLinalgOptPass::runOnOperation()
         CanonicalizeReduction,
 //        LoopInvariantCodeMotion, TODO
         PromoteToParallel,
-        CmpIndexCastSimplify,
-        ArithIndexCastSimplify<mlir::SubIOp>,
-        ArithIndexCastSimplify<mlir::AddIOp>,
-        ArithIndexCastSimplify<mlir::MulIOp>,
-        ArithIndexCastSimplify<mlir::SignedDivIOp>,
-        ArithIndexCastSimplify<mlir::UnsignedDivIOp>,
-        ArithIndexCastSimplify<mlir::SignedRemIOp>,
-        ArithIndexCastSimplify<mlir::UnsignedRemIOp>,
         CmpLoopBoundsSimplify,
         CSERewrite<mlir::FuncOp>
         >(&context);
+
+    populate_index_propagate_patterns(context, patterns);
 
     mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }

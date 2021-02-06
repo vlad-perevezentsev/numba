@@ -454,7 +454,7 @@ mlir::Value float_int_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRe
     return rewriter.create<T>(val.getLoc(), val, dst_type);
 }
 
-mlir::Value index_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
+mlir::Value index_cast_impl(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter& rewriter)
 {
     return rewriter.create<mlir::IndexCastOp>(val.getLoc(), val, dst_type);
 }
@@ -481,8 +481,8 @@ mlir::Value do_cast(mlir::Type dst_type, mlir::Value val, mlir::PatternRewriter&
         {&is_int, &is_int, &int_cast<true>},
         {&is_int, &is_float, &int_float_cast<true>},
         {&is_float, &is_int, &float_int_cast<true>},
-        {&is_index, &is_int, &index_cast},
-        {&is_int, &is_index, &index_cast},
+        {&is_index, &is_int, &index_cast_impl},
+        {&is_int, &is_index, &index_cast_impl},
     };
 
     for (auto& h : handlers)
