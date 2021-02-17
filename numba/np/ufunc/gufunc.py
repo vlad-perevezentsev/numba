@@ -26,6 +26,7 @@ class GUFunc(serialize.ReduceMixin):
         # object here
         self.gufunc_builder = GUFuncBuilder(
             py_func, signature, identity, cache, targetoptions)
+        self.__name__ = self.gufunc_builder.py_func.__name__
 
     def _reduce_states(self):
         gb = self.gufunc_builder
@@ -78,10 +79,6 @@ class GUFunc(serialize.ReduceMixin):
     @property
     def __doc__(self):
         return self.ufunc.__doc__
-
-    @property
-    def __name__(self):
-        return self.gufunc_builder.py_func.__name__
 
     @property
     def nin(self):
