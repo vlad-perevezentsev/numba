@@ -42,6 +42,21 @@ Implement parallel vectorize workqueue on top of Intel TBB.
 
 static tbb::task_group *tg = NULL;
 static tbb::task_scheduler_init *tsi = NULL;
+
+namespace
+{
+struct ThreadContext
+{
+    ThreadContext(int n_threads):
+        num_threads(n_threads),
+        arena(n_threads) {}
+
+    int num_threads = 0;
+    tbb::task_arena arena;
+};
+static ThreadContext* thread_context = nullptr;
+}
+
 static int tsi_count = 0;
 
 #ifdef _MSC_VER
@@ -209,15 +224,15 @@ parallel_for(void *fn, char **args, size_t *dimensions, size_t *steps, void *dat
 using parallel_for2_fptr = void(*)(size_t, size_t, size_t, void*);
 static void parallel_for2(size_t lower_bound, size_t upper_bound, size_t step, parallel_for2_fptr func, void* ctx)
 {
-    auto num_threads = get_num_threads();
+    auto context = thread_context;
+    assert(nullptr != context);
+    auto num_threads = context->num_threads;
     if(_DEBUG)
     {
         printf("parallel_for2 %d %d %d %d\n", (int)lower_bound, (int)upper_bound, (int)step, (int)num_threads);
     }
-    tbb::task_arena limited(num_threads);
-    fix_tls_observer observer(limited, num_threads);
 
-    limited.execute([&]
+    context->arena.execute([&]
     {
         size_t count = (upper_bound - lower_bound - 1) / step + 1;
         size_t grain = std::max(size_t(1), std::min(count / num_threads / 2, size_t(64)));
@@ -284,6 +299,8 @@ static void unload_tbb(void)
         tbb::set_assertion_handler(orig);
         delete tsi;
         tsi = NULL;
+        delete thread_context;
+        thread_context = nullptr;
     }
 }
 #endif
@@ -299,6 +316,8 @@ static void launch_threads(int count)
     tsi = new TSI_INIT(tsi_count = count);
     tg = new tbb::task_group;
     tg->run([] {}); // start creating threads asynchronously
+
+    thread_context = new ThreadContext(count);
 
     _INIT_NUM_THREADS = count;
 
