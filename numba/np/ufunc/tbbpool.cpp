@@ -15,7 +15,9 @@ Implement parallel vectorize workqueue on top of Intel TBB.
 #include <tbb/tbb.h>
 #include <string.h>
 #include <stdio.h>
+#include <array>
 #include <algorithm>
+#include <memory>
 #include "workqueue.h"
 
 #include "gufunc_scheduler.h"
@@ -221,33 +223,104 @@ parallel_for(void *fn, char **args, size_t *dimensions, size_t *steps, void *dat
     });
 }
 
-using parallel_for2_fptr = void(*)(size_t, size_t, size_t, void*);
-static void parallel_for2(size_t lower_bound, size_t upper_bound, size_t step, parallel_for2_fptr func, void* ctx)
+struct InputRange
+{
+    size_t lower;
+    size_t upper;
+    size_t step;
+};
+
+struct Range
+{
+    size_t lower;
+    size_t upper;
+};
+
+struct Dim
+{
+    Range val;
+    Dim* prev;
+};
+
+using parallel_for2_fptr = void(*)(const Range*, size_t, void*);
+
+static void parallel_for2_nested(const InputRange* input_ranges, Range* ranges, size_t depth, size_t num_threads, size_t num_loops, Dim* prev_dim, parallel_for2_fptr func, void* ctx)
+{
+    auto input = input_ranges[depth];
+    auto lower_bound = input.lower;
+    auto upper_bound = input.upper;
+    auto step = input.step;
+
+    if(_DEBUG)
+    {
+        printf("parallel_for2_nested: lower_bound=%d, upper_bound=%d, step=%d, depth=%d\n", (int)lower_bound, (int)upper_bound, (int)step, (int)depth);
+    }
+
+    size_t count = (upper_bound - lower_bound + step - 1) / step;
+    size_t grain = std::max(size_t(1), std::min(count / num_threads / 2, size_t(64)));
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, count, grain),
+        [&](const tbb::blocked_range<size_t>& r)
+        {
+            auto begin = lower_bound + r.begin() * step;
+            auto end = lower_bound + r.end() * step;
+            if(_DEBUG)
+            {
+                printf("parallel_for2_nested body: begin=%d, end=%d, depth=%d\n\n", (int)begin, (int)end, (int)depth);
+            }
+            auto next = depth + 1;
+            Dim dim{Range{begin, end}, prev_dim};
+            if (next == num_loops)
+            {
+                auto thread_index = static_cast<size_t>(tbb::this_task_arena::current_thread_index());
+                auto range_ptr = &ranges[thread_index * num_loops];
+
+                Dim* current = &dim;
+                for (size_t i = 0; i < num_loops; ++i)
+                {
+                    range_ptr[num_loops - i - 1] = current->val;
+                    current = current->prev;
+                }
+                func(range_ptr, thread_index, ctx);
+            }
+            else
+            {
+                parallel_for2_nested(input_ranges, ranges, next, num_threads, num_loops, &dim, func, ctx);
+            }
+        }, tbb::auto_partitioner());
+}
+
+static void parallel_for2(const InputRange* input_ranges, size_t num_loops, parallel_for2_fptr func, void* ctx)
 {
     auto context = thread_context;
     assert(nullptr != context);
     auto num_threads = context->num_threads;
     if(_DEBUG)
     {
-        printf("parallel_for2 %d %d %d %d\n", (int)lower_bound, (int)upper_bound, (int)step, (int)num_threads);
+        printf("parallel_for2 num_loops=%d: ", (int)num_loops);
+        for (size_t i = 0; i < num_loops; ++i)
+        {
+            auto r = input_ranges[i];
+            printf("(%d, %d, %d) ", (int)r.lower, (int)r.upper, (int)r.step);
+        }
+        puts("\n");
     }
+
+    std::array<Range, 16> static_ranges;
+    std::unique_ptr<Range[]> dyn_ranges;
+    auto* ranges = [&]()->Range*
+    {
+        auto count = num_loops * num_threads;
+        if (count <= static_ranges.size())
+        {
+            return static_ranges.data();
+        }
+        dyn_ranges.reset(new Range[count]);
+        return dyn_ranges.get();
+    }();
 
     context->arena.execute([&]
     {
-        size_t count = (upper_bound - lower_bound - 1) / step + 1;
-        size_t grain = std::max(size_t(1), std::min(count / num_threads / 2, size_t(64)));
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, count, grain),
-            [&](const tbb::blocked_range<size_t>& r)
-            {
-                auto thread_index = static_cast<size_t>(tbb::this_task_arena::current_thread_index());
-                auto begin = lower_bound + r.begin() * step;
-                auto end = lower_bound + r.end() * step;
-                if(_DEBUG)
-                {
-                    printf("parallel_for2 body %d %d %d\n", (int)begin, (int)end, (int)thread_index);
-                }
-                func(begin, end, thread_index, ctx);
-            }, tbb::auto_partitioner());
+        parallel_for2_nested(input_ranges, ranges, 0, num_threads, num_loops, nullptr, func, ctx);
     });
 }
 
