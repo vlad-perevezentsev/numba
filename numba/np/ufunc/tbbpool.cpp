@@ -244,7 +244,7 @@ struct Dim
 
 using parallel_for2_fptr = void(*)(const Range*, size_t, void*);
 
-static void parallel_for2_nested(const InputRange* input_ranges, Range* ranges, size_t depth, size_t num_threads, size_t num_loops, Dim* prev_dim, parallel_for2_fptr func, void* ctx)
+static void parallel_for2_nested(const InputRange* input_ranges, size_t depth, size_t num_threads, size_t num_loops, Dim* prev_dim, parallel_for2_fptr func, void* ctx)
 {
     auto input = input_ranges[depth];
     auto lower_bound = input.lower;
@@ -272,7 +272,17 @@ static void parallel_for2_nested(const InputRange* input_ranges, Range* ranges, 
             if (next == num_loops)
             {
                 auto thread_index = static_cast<size_t>(tbb::this_task_arena::current_thread_index());
-                auto range_ptr = &ranges[thread_index * num_loops];
+                std::array<Range, 8> static_ranges;
+                std::unique_ptr<Range[]> dyn_ranges;
+                auto* range_ptr = [&]()->Range*
+                {
+                    if (num_loops <= static_ranges.size())
+                    {
+                        return static_ranges.data();
+                    }
+                    dyn_ranges.reset(new Range[num_loops]);
+                    return dyn_ranges.get();
+                }();
 
                 Dim* current = &dim;
                 for (size_t i = 0; i < num_loops; ++i)
@@ -284,7 +294,7 @@ static void parallel_for2_nested(const InputRange* input_ranges, Range* ranges, 
             }
             else
             {
-                parallel_for2_nested(input_ranges, ranges, next, num_threads, num_loops, &dim, func, ctx);
+                parallel_for2_nested(input_ranges, next, num_threads, num_loops, &dim, func, ctx);
             }
         }, tbb::auto_partitioner());
 }
@@ -305,22 +315,9 @@ static void parallel_for2(const InputRange* input_ranges, size_t num_loops, para
         puts("\n");
     }
 
-    std::array<Range, 16> static_ranges;
-    std::unique_ptr<Range[]> dyn_ranges;
-    auto* ranges = [&]()->Range*
-    {
-        auto count = num_loops * num_threads;
-        if (count <= static_ranges.size())
-        {
-            return static_ranges.data();
-        }
-        dyn_ranges.reset(new Range[count]);
-        return dyn_ranges.get();
-    }();
-
     context->arena.execute([&]
     {
-        parallel_for2_nested(input_ranges, ranges, 0, num_threads, num_loops, nullptr, func, ctx);
+        parallel_for2_nested(input_ranges, 0, num_threads, num_loops, nullptr, func, ctx);
     });
 }
 
