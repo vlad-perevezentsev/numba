@@ -21,6 +21,5 @@ elseif(DEFINED DPCOMP_DIR)
         ${DPCOMP_DIR}/Release
         )
 else()
-    message(STATUS "PLIER from local directory is used")
-    add_subdirectory(plier)
+    message(FATAL_ERROR "dpcomp not found")
 endif()
