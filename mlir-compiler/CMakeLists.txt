@@ -8,7 +8,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(mlir-compiler)
 
-if(DEFINED DPCOMP_DIR)
+if(DEFINED DPCOMP_TREE)
+    message(STATUS "Out of tree PLIER is used")
+    add_subdirectory(${DPCOMP_TREE} plier)
+elseif(DEFINED DPCOMP_DIR)
     message(STATUS "PLIER from DPCOMP_DIR is used")
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${DPCOMP_DIR}/include
