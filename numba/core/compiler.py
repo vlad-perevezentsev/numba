@@ -28,11 +28,12 @@ from numba.core.typed_passes import (NopythonTypeInference, AnnotateTypes,
                                      NopythonRewrites, PreParforPass,
                                      ParforPass, DumpParforDiagnostics,
                                      IRLegalization, NoPythonBackend,
-                                     InlineOverloads, PreLowerStripPhis,
-                                     MlirDumpPlier, MlirBackend)
+                                     InlineOverloads, PreLowerStripPhis)
 
 from numba.core.object_mode_passes import (ObjectModeFrontEnd,
                                            ObjectModeBackEnd, CompileInterpMode)
+
+from numba.mlir.passes import (MlirDumpPlier, MlirBackend)
 
 class Flags(utils.ConfigOptions):
     # These options are all false by default, but the defaults are
