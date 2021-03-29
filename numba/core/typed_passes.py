@@ -844,3 +844,31 @@ class PreLowerStripPhis(FunctionPass):
 
         func_ir.blocks = newblocks
         return func_ir
+
+
+@register_pass(mutates_CFG=False, analysis_only=True)
+class LegalizeForTarget(AnalysisPass):
+    """
+    Scans the typemap for calls into a different target
+    """
+    _name = "legalize_for_target"
+
+    def __init__(self):
+        AnalysisPass.__init__(self)
+
+    def run_pass(self, state):
+        # If the target_backend is "CustomCPU", check for invalid callee target
+        if state.flags.target_backend == 'CustomCPU':
+            # Scan the typemap
+            for obj, typ in state.typemap.items():
+                # If the type is a Dispatcher
+                if isinstance(typ, types.Dispatcher):
+                    print("   CALL", obj, "::", typ)
+                    taropts = typ.dispatcher.targetoptions
+                    # If the dispatcher defines "target_backend"
+                    if "target_backend" in taropts:
+                        # make sure its value is "CustomCPU"
+                        if taropts["target_backend"] != "CustomCPU":
+                            # if not match, raise
+                            raise RuntimeError("Backend Mismatch!!!!!!")
+        return False

@@ -29,7 +29,7 @@ from numba.core.typed_passes import (NopythonTypeInference, AnnotateTypes,
                                      ParforPass, DumpParforDiagnostics,
                                      IRLegalization, NoPythonBackend,
                                      InlineOverloads, PreLowerStripPhis,
-                                     NativeLowering)
+                                     NativeLowering, LegalizeForTarget)
 
 from numba.core.object_mode_passes import (ObjectModeFrontEnd,
                                            ObjectModeBackEnd)
@@ -563,6 +563,8 @@ class DefaultPassBuilder(object):
         pm = PassManager(name)
         # typing
         pm.add_pass(NopythonTypeInference, "nopython frontend")
+        # Add pass that checks for callee's target_backend
+        pm.add_pass(LegalizeForTarget, "legalize for target")
         pm.add_pass(AnnotateTypes, "annotate types")
 
         # strip phis
