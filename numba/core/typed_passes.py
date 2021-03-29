@@ -859,6 +859,8 @@ class LegalizeForTarget(AnalysisPass):
     def run_pass(self, state):
         # If the target_backend is "CustomCPU", check for invalid callee target
         if state.flags.target_backend == 'CustomCPU':
+            qualname = state.func_id.func_qualname
+            print(f"Running LegalizeForTarget in {qualname}")
             # Scan the typemap
             for obj, typ in state.typemap.items():
                 # If the type is a Dispatcher
@@ -870,5 +872,5 @@ class LegalizeForTarget(AnalysisPass):
                         # make sure its value is "CustomCPU"
                         if taropts["target_backend"] != "CustomCPU":
                             # if not match, raise
-                            raise RuntimeError("Backend Mismatch!!!!!!")
+                            raise RuntimeError(f"Backend Mismatch in {typ}!")
         return False

@@ -444,6 +444,9 @@ class CompilerBase(object):
         """
         Populate and run compiler pipeline
         """
+        print("Compiling".center(80, '-'))
+        print(f">> {self.state.func_id.func_qualname}")
+        print(f"   flags={self.state.flags.summary()}")
         with utils.ConfigStack().enter(self.state.flags.copy()):
             pms = self.define_pipelines()
             for pm in pms:
