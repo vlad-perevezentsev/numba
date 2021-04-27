@@ -60,6 +60,7 @@ def next_label():
 def mk_alloc(typemap, calltypes, lhs, size_var, dtype, scope, loc, lhs_typ):
     """generate an array allocation with np.empty() and return list of nodes.
     size_var can be an int variable or tuple of int variables.
+    lhs_typ is the type of the array being allocated.
     """
     out = []
     ndims = 1
@@ -107,14 +108,17 @@ def mk_alloc(typemap, calltypes, lhs, size_var, dtype, scope, loc, lhs_typ):
     np_typ_getattr = ir.Expr.getattr(g_np_var, dtype_str, loc)
     typ_var_assign = ir.Assign(np_typ_getattr, typ_var, loc)
     alloc_call = ir.Expr.call(attr_var, [size_var, typ_var], (), loc)
-    if calltypes:
-        calltypes[alloc_call] = typemap[attr_var.name].get_call_type(
-            typing.Context(), [size_typ, types.functions.NumberClass(dtype)], {})
-    # signature(
-    #    types.npytypes.Array(dtype, ndims, 'C'), size_typ,
-    #    types.functions.NumberClass(dtype))
 
     if lhs_typ.layout == 'F':
+        if calltypes:
+            cac = typemap[attr_var.name].get_call_type(
+                typing.Context(), [size_typ, types.functions.NumberClass(dtype)], {})
+            # By default, all calls to "empty" are typed as returning a standard
+            # Numpy ndarray.  If we are allocating a ndarray subclass here then
+            # just change the return type to be that of the subclass.
+            cac._return_type = lhs_typ.copy(layout='C')
+            calltypes[alloc_call] = cac
+
         empty_c_typ = lhs_typ.copy(layout='C')
         empty_c_var = ir.Var(scope, mk_unique_var("$empty_c_var"), loc)
         if typemap:
@@ -138,6 +142,15 @@ def mk_alloc(typemap, calltypes, lhs, size_var, dtype, scope, loc, lhs_typ):
         out.extend([g_np_assign, attr_assign, typ_var_assign, empty_c_assign,
                     afa_attr_assign, asfortranarray_assign])
     else:
+        if calltypes:
+            cac = typemap[attr_var.name].get_call_type(
+                typing.Context(), [size_typ, types.functions.NumberClass(dtype)], {})
+            # By default, all calls to "empty" are typed as returning a standard
+            # Numpy ndarray.  If we are allocating a ndarray subclass here then
+            # just change the return type to be that of the subclass.
+            cac._return_type = lhs_typ
+            calltypes[alloc_call] = cac
+
         alloc_assign = ir.Assign(alloc_call, lhs, loc)
         out.extend([g_np_assign, attr_assign, typ_var_assign, alloc_assign])
 
