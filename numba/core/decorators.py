@@ -158,7 +158,7 @@ def jit(signature_or_function=None, locals={}, cache=False,
         target = options.pop('target')
         warnings.warn("The 'target' keyword argument is deprecated.", NumbaDeprecationWarning)
     else:
-        target = options.pop('_target', None)
+        target = options.pop('_target', 'cpu')
 
     options['boundscheck'] = boundscheck
 
@@ -195,6 +195,7 @@ def jit(signature_or_function=None, locals={}, cache=False,
 jit_registry[hardware_registry['cpu']] = jit
 
 def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
+
     dispatcher = resolve_dispatcher_from_str(target)
 
     def wrapper(func, dispatcher):
@@ -249,7 +250,7 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
             target_ = target
             if target_ is None:
                 target_ = 'cpu'
-            disp = registry.dispatcher_registry[target_]
+            disp = dispatcher_registry[hardware_registry[target_]]
             return wrapper(func, disp)
 
         from numba_dppy.target_dispatcher import TargetDispatcher
