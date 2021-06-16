@@ -187,10 +187,7 @@ def jit(signature_or_function=None, locals={}, cache=False,
 
 def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
 
-    from numba.core.target_extension import resolve_dispatcher_from_str
-    dispatcher = resolve_dispatcher_from_str(target)
-
-    def wrapper(func):
+    def wrapper(func, dispatcher):
         if extending.is_jitted(func):
             raise TypeError(
                 "A jit decorator was called on an already jitted function "
@@ -204,7 +201,6 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
                 f"{type(func)})."
             )
 
-    def wrapper(func, dispatcher):
         if config.ENABLE_CUDASIM and target == 'cuda':
             from numba import cuda
             return cuda.jit(func)
@@ -213,6 +209,7 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
         if target == 'dppl':
             from . import dppl
             return dppl.jit(func)
+
         disp = dispatcher(py_func=func, locals=locals,
                           targetoptions=targetoptions,
                           **dispatcher_args)
@@ -256,8 +253,10 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
             target_ = target
             if target_ is None:
                 target_ = 'cpu'
-            disp = registry.dispatcher_registry[target_]
-            return wrapper(func, disp)
+
+            from numba.core.target_extension import resolve_dispatcher_from_str
+            dispatcher = resolve_dispatcher_from_str(target_)
+            return wrapper(func, dispatcher)
 
         from numba_dppy.target_dispatcher import TargetDispatcher
         disp = TargetDispatcher(func, wrapper, target, targetoptions.get('parallel'))
