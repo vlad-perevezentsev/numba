@@ -1,6 +1,6 @@
-*****
+*********************************
 Numba with patches for numba-dppy
-*****
+*********************************
 
 .. image:: https://badges.gitter.im/numba/numba.svg
    :target: https://gitter.im/numba/numba?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge
