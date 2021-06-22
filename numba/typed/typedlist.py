@@ -347,7 +347,7 @@ class List(MutableSequence, pt.Generic[T]):
     # noqa E704 required to follow overload style of using ... in the same line
     @pt.overload  # type: ignore[override]
     def __setitem__(self, i: int, o: T) -> None: ...  # noqa: F811, E704
-    @pt.overload
+    @pt.overload  # noqa: F811
     def __setitem__(self, s: slice, o: 'List[T]') -> None: ...  # noqa: F811, E704, E501
 
     def __setitem__(self, i: Int_or_Slice, item: T_or_ListT) -> None:  # noqa: F811, E501
@@ -359,7 +359,7 @@ class List(MutableSequence, pt.Generic[T]):
     # noqa E704 required to follow overload style of using ... in the same line
     @pt.overload
     def __getitem__(self, i: int) -> T: ...  # noqa: F811, E704
-    @pt.overload
+    @pt.overload  # noqa: F811
     def __getitem__(self, i: slice) -> 'List[T]': ...  # noqa: F811, E704
 
     def __getitem__(self, i: Int_or_Slice) -> T_or_ListT:  # noqa: F811
